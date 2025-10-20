@@ -32,13 +32,11 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Use auth controller to handle login (role not required for login, just for UI)
-      const response = await authController.login({ username, password });
+      // Pass role to backend for filtering
+      const response = await authController.login({ username, password, role_code: role });
 
       if (response.success) {
-        // Get user's dashboard route from their role
         const dashboardRoute = authController.getUserDashboardRoute();
-        // Redirect to role-specific dashboard
         router.push(dashboardRoute || '/dashboard');
       } else {
         setError(response.message);

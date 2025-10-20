@@ -45,52 +45,48 @@ class AuthController:
             print(f"Password verification error: {e}")
             return False
     
-    async def login(self, username: str, password: str) -> AuthResponse:
+    async def login(self, username: str, password: str, role_code: Optional[str] = None) -> AuthResponse:
         """
-        Authenticate user with username and password
-        Returns user with role information for dashboard routing
-        
-        Args:
-            username: User's username
-            password: User's password
-        
-        Returns:
-            AuthResponse with user data including role and dashboard_route
+        Authenticate user with username, password, and optional role_code
+        Only allow login if user's role matches selected role
         """
         try:
             # Query using user_details view to get user with role info
-            response = self.supabase.table("user_details").select("*").eq("username", username).execute()
-            
+            query = self.supabase.table("user_details").select("*").eq("username", username)
+            if role_code:
+                query = query.eq("role_code", role_code)
+            response = query.execute()
+
             if not response.data or len(response.data) == 0:
                 return AuthResponse(
                     success=False,
-                    message="Invalid username or password"
+                    message="Invalid username, password, or role"
                 )
-            
+
             # Extract user data
             user_data = response.data[0]
-            
+
             # Check if user is active (not suspended)
             if not user_data.get('is_active', True):
                 return AuthResponse(
                     success=False,
                     message="Account has been suspended. Please contact administrator."
                 )
-            
+
             # Get password from users table
             password_response = self.supabase.table("users").select("password").eq("username", username).execute()
-            
+
             if not password_response.data:
                 return AuthResponse(
                     success=False,
                     message="Invalid username or password"
                 )
-            
+
             stored_password = password_response.data[0].get('password')
-            
+
             # Check if password is hashed
             is_hashed = stored_password and stored_password.startswith(('$2b$', '$2a$', '$2y$'))
-            
+
             if is_hashed:
                 if not self.verify_password(password, stored_password):
                     return AuthResponse(
@@ -104,21 +100,21 @@ class AuthController:
                         success=False,
                         message="Invalid username or password"
                     )
-            
+
             # Update last login
             self.supabase.table("users").update({
                 "last_login": "now()"
             }).eq("id", user_data.get('id')).execute()
-            
+
             # Create user object with role information
             user = User.from_db(user_data)
-            
+
             return AuthResponse(
                 success=True,
                 message="Login successful",
                 user=user
             )
-            
+
         except Exception as e:
             print(f"Login error: {e}")
             return AuthResponse(

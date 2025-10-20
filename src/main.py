@@ -3,23 +3,53 @@ FastAPI Backend Application
 Provides REST API endpoints for authentication
 """
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Depends
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional, List
+from security.jwt_utils import create_access_token, create_refresh_token, decode_token
 from controller.auth_controller import auth_controller
-from controller.user_account_controller import UserAccountController
+from controller.user_account_controller import (
+    CreateUserAccountController,
+    ViewUserAccountController,
+    UpdateUserAccountController,
+    SuspendUserAccountController
+)
 from supabase import create_client
 import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-# Initialize user account controller
+
+# Initialize CRUD controllers
 supabase_client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
-user_account_controller = UserAccountController(supabase_client)
+create_user_controller = CreateUserAccountController(supabase_client)
+view_user_controller = ViewUserAccountController(supabase_client)
+update_user_controller = UpdateUserAccountController(supabase_client)
+suspend_user_controller = SuspendUserAccountController(supabase_client)
 
 app = FastAPI(title="Auth API", version="1.0.0")
+security_scheme = HTTPBearer()
+
+def get_current_user_claims(credentials: HTTPAuthorizationCredentials = Depends(security_scheme)):
+    """Decode and validate bearer token; returns claims or raises 401"""
+    token = credentials.credentials if credentials else None
+    if not token:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    payload = decode_token(token)
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    return payload
+
+def require_role(required_role: str):
+    def _checker(claims = Depends(get_current_user_claims)):
+        role = claims.get("role")
+        if role != required_role:
+            raise HTTPException(status_code=403, detail="Forbidden: insufficient role")
+        return claims
+    return _checker
 
 # CORS middleware
 app.add_middleware(
@@ -38,6 +68,7 @@ class LoginRequest(BaseModel):
     """Login request model"""
     username: str
     password: str
+    role_code: str = None
 
 
 class LoginResponse(BaseModel):
@@ -45,6 +76,17 @@ class LoginResponse(BaseModel):
     success: bool
     message: str
     user: Optional[dict] = None
+    access_token: Optional[str] = None
+    refresh_token: Optional[str] = None
+    expires_in: Optional[int] = None
+
+
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+class RefreshResponse(BaseModel):
+    access_token: Optional[str] = None
+    expires_in: Optional[int] = None
 
 
 class CreateUserRequest(BaseModel):
@@ -102,24 +144,57 @@ async def login(request: LoginRequest):
     """
     try:
         # Use auth controller to handle login
-        auth_response = await auth_controller.login(request.username, request.password)
-        
+        auth_response = await auth_controller.login(request.username, request.password, request.role_code)
+
         # Convert user to dict if it exists
         user_dict = None
         if auth_response.user:
             user_dict = auth_response.user.to_dict()
-        
+
+        # If login successful, issue tokens
+        access_token = None
+        refresh_token = None
+        expires_in = None
+
+        if auth_response.success and user_dict:
+            subject = str(user_dict['id'])
+            access_token = create_access_token(subject, extra={"role": user_dict.get("role_code")})
+            refresh_token = create_refresh_token(subject)
+            # Mirror frontend expectation (seconds)
+            expires_in = 60 * 60  # 60 minutes default; keep in sync with jwt_utils
+
         return LoginResponse(
             success=auth_response.success,
             message=auth_response.message,
-            user=user_dict
+            user=user_dict,
+            access_token=access_token,
+            refresh_token=refresh_token,
+            expires_in=expires_in
         )
-        
+
     except Exception as e:
         print(f"Login endpoint error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/refresh", response_model=RefreshResponse)
+async def refresh_token(request: RefreshRequest):
+    """Issue a new access token from a valid refresh token"""
+    try:
+        payload = decode_token(request.refresh_token)
+        if not payload or payload.get("type") != "refresh":
+            raise HTTPException(status_code=401, detail="Invalid refresh token")
+        subject = payload.get("sub")
+        if not subject:
+            raise HTTPException(status_code=401, detail="Invalid token subject")
+        new_access = create_access_token(subject)
+        return RefreshResponse(access_token=new_access, expires_in=60*60)
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=401, detail="Could not refresh token")
 
 
 @app.get("/api/verify/{user_id}")
@@ -148,7 +223,7 @@ async def verify_user(user_id: int):
 # ========================================
 
 @app.post("/api/users")
-async def create_user(request: CreateUserRequest):
+async def create_user(request: CreateUserRequest, _claims = Depends(require_role("USER_ADMIN"))):
     """
     Create a new user account
     
@@ -159,7 +234,7 @@ async def create_user(request: CreateUserRequest):
         Creation result with user data
     """
     try:
-        result = await user_account_controller.create_user(
+        result = await create_user_controller.create_user(
             username=request.username,
             password=request.password,
             full_name=request.full_name,
@@ -168,7 +243,10 @@ async def create_user(request: CreateUserRequest):
         )
         
         if not result['success']:
-            raise HTTPException(status_code=400, detail=result['message'])
+            # Use 409 Conflict for duplicate username, else 400 Bad Request
+            message = result.get('message', '')
+            status_code = 409 if isinstance(message, str) and 'exists' in message.lower() else 400
+            raise HTTPException(status_code=status_code, detail=message)
         
         return result
         
@@ -179,7 +257,7 @@ async def create_user(request: CreateUserRequest):
 
 
 @app.get("/api/users")
-async def get_all_users():
+async def get_all_users(_claims = Depends(require_role("USER_ADMIN"))):
     """
     Get all users
     
@@ -187,7 +265,7 @@ async def get_all_users():
         List of all users
     """
     try:
-        users = await user_account_controller.get_all_users()
+        users = await view_user_controller.get_all_users()
         return {
             "success": True,
             "users": [user.to_dict() for user in users]
@@ -197,7 +275,7 @@ async def get_all_users():
 
 
 @app.get("/api/users/{user_id}")
-async def get_user_by_id(user_id: int):
+async def get_user_by_id(user_id: int, _claims = Depends(require_role("USER_ADMIN"))):
     """
     Get user by ID
     
@@ -208,11 +286,9 @@ async def get_user_by_id(user_id: int):
         User data
     """
     try:
-        user = await user_account_controller.get_user(user_id)
-        
+        user = await view_user_controller.get_user(user_id)
         if not user:
             raise HTTPException(status_code=404, detail="User not found")
-        
         return {
             "success": True,
             "user": user.to_dict()
@@ -224,7 +300,7 @@ async def get_user_by_id(user_id: int):
 
 
 @app.put("/api/users/{user_id}")
-async def update_user(user_id: int, request: UpdateUserRequest):
+async def update_user(user_id: int, request: UpdateUserRequest, _claims = Depends(require_role("USER_ADMIN"))):
     """
     Update user information
     
@@ -236,7 +312,7 @@ async def update_user(user_id: int, request: UpdateUserRequest):
         Update result
     """
     try:
-        result = await user_account_controller.update_user(
+        result = await update_user_controller.update_user(
             user_id=user_id,
             full_name=request.full_name,
             email=request.email,
@@ -256,7 +332,7 @@ async def update_user(user_id: int, request: UpdateUserRequest):
 
 
 @app.delete("/api/users/{user_id}")
-async def delete_user(user_id: int):
+async def delete_user(user_id: int, _claims = Depends(require_role("USER_ADMIN"))):
     """
     Delete a user account
     
@@ -267,13 +343,10 @@ async def delete_user(user_id: int):
         Deletion result
     """
     try:
-        result = await user_account_controller.delete_user(user_id)
-        
+        result = await suspend_user_controller.suspend_user(user_id)
         if not result['success']:
             raise HTTPException(status_code=404, detail=result['message'])
-        
         return result
-        
     except HTTPException:
         raise
     except Exception as e:
@@ -281,7 +354,7 @@ async def delete_user(user_id: int):
 
 
 @app.post("/api/users/search")
-async def search_users(request: SearchRequest):
+async def search_users(request: SearchRequest, _claims = Depends(require_role("USER_ADMIN"))):
     """
     Search for users by username, name, or email
     
@@ -292,7 +365,7 @@ async def search_users(request: SearchRequest):
         List of matching users
     """
     try:
-        users = await user_account_controller.search_users(request.query)
+        users = await view_user_controller.search_users(request.query)
         return {
             "success": True,
             "users": [user.to_dict() for user in users]
@@ -302,7 +375,7 @@ async def search_users(request: SearchRequest):
 
 
 @app.get("/api/roles")
-async def get_all_roles():
+async def get_all_roles(_claims = Depends(require_role("USER_ADMIN"))):
     """
     Get all available roles
     
@@ -310,7 +383,7 @@ async def get_all_roles():
         List of roles
     """
     try:
-        roles = await user_account_controller.get_all_roles()
+        roles = await view_user_controller.get_all_roles()
         return {
             "success": True,
             "roles": roles

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { authController } from '@/controllers/authController';
+import { userController } from '@/controllers/userController';
 
 export default function UserAdminDashboard() {
   const [user, setUser] = useState(null);
@@ -21,6 +22,8 @@ export default function UserAdminDashboard() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  // Modal-scoped errors
+  const [createError, setCreateError] = useState('');
 
   // Form State
   const [formData, setFormData] = useState({
@@ -63,27 +66,27 @@ export default function UserAdminDashboard() {
   }, [router]);
 
   const loadUsers = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/users');
-      const data = await response.json();
-      if (data.success) {
-        setUsers(data.users);
+      try {
+        const response = await userController.getUsers();
+        const data = await response.json();
+        if (data.success) {
+          setUsers(data.users);
+        }
+      } catch (err) {
+        setError('Error loading users');
       }
-    } catch (err) {
-      console.error('Error loading users:', err);
-    }
   };
 
   const loadRoles = async () => {
-    try {
-      const response = await fetch('http://localhost:8000/api/roles');
-      const data = await response.json();
-      if (data.success) {
-        setRoles(data.roles);
+      try {
+        const response = await userController.getRoles();
+        const data = await response.json();
+        if (data.success) {
+          setRoles(data.roles);
+        }
+      } catch (err) {
+        setError('Error loading roles');
       }
-    } catch (err) {
-      console.error('Error loading roles:', err);
-    }
   };
 
   const handleSearch = async () => {
@@ -91,16 +94,13 @@ export default function UserAdminDashboard() {
       loadUsers();
       return;
     }
-
     try {
-      const response = await fetch('http://localhost:8000/api/users/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: searchQuery })
-      });
+      const response = await userController.searchUsers(searchQuery);
       const data = await response.json();
       if (data.success) {
         setUsers(data.users);
+      } else {
+        setError(data.message);
       }
     } catch (err) {
       setError('Search failed');
@@ -111,26 +111,22 @@ export default function UserAdminDashboard() {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setCreateError('');
     setSuccess('');
-
     try {
-      const response = await fetch('http://localhost:8000/api/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(formData)
-      });
+      const response = await userController.createUser(formData);
       const data = await response.json();
-
-      if (data.success) {
+      if (response.ok && data.success) {
         setSuccess('User created successfully');
         setShowCreateModal(false);
         loadUsers();
         resetForm();
       } else {
-        setError(data.message || 'Failed to create user');
+        // Prefer showing error within the modal
+        setCreateError(data.detail || data.message || 'Failed to create user');
       }
     } catch (err) {
-      setError('Error creating user');
+      setCreateError('Error creating user');
     } finally {
       setLoading(false);
     }
@@ -141,20 +137,14 @@ export default function UserAdminDashboard() {
     setLoading(true);
     setError('');
     setSuccess('');
-
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${selectedUser.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          full_name: formData.full_name,
-          email: formData.email,
-          role_id: formData.role_id ? parseInt(formData.role_id) : null,
-          is_active: formData.is_active
-        })
+      const response = await userController.updateUser(selectedUser.id, {
+        full_name: formData.full_name,
+        email: formData.email,
+        role_id: formData.role_id ? parseInt(formData.role_id) : null,
+        is_active: formData.is_active
       });
       const data = await response.json();
-
       if (data.success) {
         setSuccess('User updated successfully');
         setShowEditModal(false);
@@ -174,13 +164,9 @@ export default function UserAdminDashboard() {
     setLoading(true);
     setError('');
     setSuccess('');
-
     try {
-      const response = await fetch(`http://localhost:8000/api/users/${selectedUser.id}`, {
-        method: 'DELETE'
-      });
+      const response = await userController.deleteUser(selectedUser.id);
       const data = await response.json();
-
       if (data.success) {
         setSuccess('User suspended successfully');
         setShowDeleteConfirm(false);
@@ -445,6 +431,11 @@ export default function UserAdminDashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Create New User</h3>
+            {createError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {createError}
+              </div>
+            )}
             <form onSubmit={handleCreateUser} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>

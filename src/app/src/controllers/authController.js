@@ -3,156 +3,161 @@
  * Frontend controller for managing authentication state and API calls
  */
 
+
 const API_BASE_URL = 'http://localhost:8000';
 
 class AuthController {
   USER_STORAGE_KEY = 'user';
+  ACCESS_TOKEN_KEY = 'access_token';
+  REFRESH_TOKEN_KEY = 'refresh_token';
 
-  /**
-   * Login user with username and password
-   * @param {Object} credentials - Login credentials
-   * @param {string} credentials.username - Username
-   * @param {string} credentials.password - Password
-   * @returns {Promise<Object>} Auth response with success status, message, and user data
-   */
   async login(credentials) {
     try {
-      const { username, password } = credentials;
-
-      // Call Python backend API
       const response = await fetch(`${API_BASE_URL}/api/login`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ username, password }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(credentials),
       });
-
       const data = await response.json();
-
       if (!response.ok || !data.success) {
-        return {
-          success: false,
-          message: data.message || 'Invalid username or password',
-        };
+        return { success: false, message: data.message || 'Invalid username or password' };
       }
-
-      // Extract user data
-      const user = data.user;
-
-      // Store user in localStorage
-      this.setUser(user);
-
-      return {
-        success: true,
-        message: data.message,
-        user,
-      };
+      // Store tokens and user
+      if (data.access_token) this.setAccessToken(data.access_token);
+      if (data.refresh_token) this.setRefreshToken(data.refresh_token);
+      if (data.user) this.setUser(data.user);
+      return { success: true, message: data.message, user: data.user };
     } catch (error) {
-      console.error('Login error:', error);
-      return {
-        success: false,
-        message: 'Failed to connect to server. Make sure the backend is running.',
-      };
+      return { success: false, message: 'Failed to connect to server. Make sure the backend is running.' };
     }
   }
 
-  /**
-   * Logout current user
-   */
   logout() {
     if (typeof window !== 'undefined') {
       localStorage.removeItem(this.USER_STORAGE_KEY);
+      localStorage.removeItem(this.ACCESS_TOKEN_KEY);
+      localStorage.removeItem(this.REFRESH_TOKEN_KEY);
     }
   }
 
-  /**
-   * Check if user is authenticated
-   * @returns {boolean} True if user is authenticated
-   */
   isAuthenticated() {
     if (typeof window === 'undefined') return false;
-    
-    const user = localStorage.getItem(this.USER_STORAGE_KEY);
-    return user !== null;
+    return !!this.getAccessToken();
   }
 
-  /**
-   * Get current logged in user
-   * @returns {Object|null} User object or null
-   */
   getCurrentUser() {
     if (typeof window === 'undefined') return null;
-
     const userData = localStorage.getItem(this.USER_STORAGE_KEY);
-    
     if (!userData) return null;
-
-    try {
-      return JSON.parse(userData);
-    } catch (error) {
-      console.error('Error parsing user data:', error);
-      return null;
-    }
+    try { return JSON.parse(userData); } catch { return null; }
   }
 
-  /**
-   * Store user data in localStorage
-   * @param {Object} user - User object to store
-   * @private
-   */
   setUser(user) {
     if (typeof window !== 'undefined') {
       localStorage.setItem(this.USER_STORAGE_KEY, JSON.stringify(user));
     }
   }
 
-  /**
-   * Get user's dashboard route based on role
-   * @returns {string|null} Dashboard route or null
-   */
   getUserDashboardRoute() {
     const user = this.getCurrentUser();
     return user ? user.dashboard_route : null;
   }
 
-  /**
-   * Get user's role code
-   * @returns {string|null} Role code or null
-   */
   getUserRole() {
     const user = this.getCurrentUser();
     return user ? user.role_code : null;
   }
 
-  /**
-   * Verify if stored user session is still valid
-   * @returns {Promise<boolean>} True if session is valid
-   */
+  setAccessToken(token) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(this.ACCESS_TOKEN_KEY, token);
+    }
+  }
+
+  getAccessToken() {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(this.ACCESS_TOKEN_KEY);
+  }
+
+  setRefreshToken(token) {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem(this.REFRESH_TOKEN_KEY, token);
+    }
+  }
+
+  getRefreshToken() {
+    if (typeof window === 'undefined') return null;
+    return localStorage.getItem(this.REFRESH_TOKEN_KEY);
+  }
+
+  async refreshAccessToken() {
+    const refreshToken = this.getRefreshToken();
+    if (!refreshToken) return false;
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: refreshToken }),
+      });
+      const data = await response.json();
+      if (data.access_token) {
+        this.setAccessToken(data.access_token);
+        return true;
+      }
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  async authenticatedFetch(url, options = {}) {
+    let token = this.getAccessToken();
+    const authOptions = {
+      ...options,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+        'Authorization': token ? `Bearer ${token}` : undefined,
+      },
+    };
+    let response = await fetch(url, authOptions);
+    if (response.status === 401) {
+      const refreshed = await this.refreshAccessToken();
+      if (refreshed) {
+        token = this.getAccessToken();
+        authOptions.headers['Authorization'] = `Bearer ${token}`;
+        response = await fetch(url, authOptions);
+      } else {
+        this.logout();
+      }
+    }
+    return response;
+  }
+
+  updateCurrentUser(updatedData) {
+    const user = this.getCurrentUser();
+    if (user) {
+      this.setUser({ ...user, ...updatedData });
+    }
+  }
+
   async verifySession() {
     const user = this.getCurrentUser();
-    
     if (!user) return false;
-
     try {
-      // Verify user still exists in database via backend API
-      const response = await fetch(`${API_BASE_URL}/api/verify/${user.id}`);
+      const response = await this.authenticatedFetch(`${API_BASE_URL}/api/verify/${user.id}`);
       const data = await response.json();
-
       if (!response.ok || !data.exists) {
         this.logout();
         return false;
       }
-
       return true;
-    } catch (error) {
-      console.error('Session verification error:', error);
+    } catch {
       return false;
     }
   }
 }
 
-// Create singleton instance
 export const authController = new AuthController();
 export default authController;
 

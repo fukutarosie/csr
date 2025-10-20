@@ -35,6 +35,14 @@ class User:
     
     def to_dict(self) -> Dict[str, Any]:
         """Convert user to dictionary"""
+        # Handle last_login - could be datetime object or string from DB
+        last_login_str = None
+        if self.last_login:
+            if isinstance(self.last_login, datetime):
+                last_login_str = self.last_login.isoformat()
+            else:
+                last_login_str = str(self.last_login)
+        
         return {
             'id': self.id,
             'username': self.username,
@@ -45,7 +53,7 @@ class User:
             'role_code': self.role_code,
             'dashboard_route': self.dashboard_route,
             'is_active': self.is_active,
-            'last_login': self.last_login.isoformat() if self.last_login else None
+            'last_login': last_login_str
         }
     
     @staticmethod

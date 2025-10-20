@@ -7,7 +7,36 @@ import { authController } from '@/controllers/authController';
 export default function UserAdminDashboard() {
   const [user, setUser] = useState(null);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+  const [activeTab, setActiveTab] = useState('manage-accounts');
   const router = useRouter();
+
+  // User Account Management State
+  const [users, setUsers] = useState([]);
+  const [roles, setRoles] = useState([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+
+  // Form State
+  const [formData, setFormData] = useState({
+    username: '',
+    password: '',
+    full_name: '',
+    email: '',
+    role_id: '',
+    is_active: true
+  });
+
+  // Profile Form State
+  const [profileData, setProfileData] = useState({
+    full_name: '',
+    email: ''
+  });
 
   useEffect(() => {
     if (!authController.isAuthenticated()) {
@@ -23,14 +52,183 @@ export default function UserAdminDashboard() {
     }
 
     setUser(currentUser);
+    loadUsers();
+    loadRoles();
+    
+    // Initialize profile data
+    setProfileData({
+      full_name: currentUser.full_name,
+      email: currentUser.email || ''
+    });
   }, [router]);
+
+  const loadUsers = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/users');
+      const data = await response.json();
+      if (data.success) {
+        setUsers(data.users);
+      }
+    } catch (err) {
+      console.error('Error loading users:', err);
+    }
+  };
+
+  const loadRoles = async () => {
+    try {
+      const response = await fetch('http://localhost:8000/api/roles');
+      const data = await response.json();
+      if (data.success) {
+        setRoles(data.roles);
+      }
+    } catch (err) {
+      console.error('Error loading roles:', err);
+    }
+  };
+
+  const handleSearch = async () => {
+    if (!searchQuery.trim()) {
+      loadUsers();
+      return;
+    }
+
+    try {
+      const response = await fetch('http://localhost:8000/api/users/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: searchQuery })
+      });
+      const data = await response.json();
+      if (data.success) {
+        setUsers(data.users);
+      }
+    } catch (err) {
+      setError('Search failed');
+    }
+  };
+
+  const handleCreateUser = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch('http://localhost:8000/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(formData)
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess('User created successfully');
+        setShowCreateModal(false);
+        loadUsers();
+        resetForm();
+      } else {
+        setError(data.message || 'Failed to create user');
+      }
+    } catch (err) {
+      setError('Error creating user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateUser = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          full_name: formData.full_name,
+          email: formData.email,
+          role_id: formData.role_id ? parseInt(formData.role_id) : null,
+          is_active: formData.is_active
+        })
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess('User updated successfully');
+        setShowEditModal(false);
+        loadUsers();
+        resetForm();
+      } else {
+        setError(data.message || 'Failed to update user');
+      }
+    } catch (err) {
+      setError('Error updating user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteUser = async () => {
+    setLoading(true);
+    setError('');
+    setSuccess('');
+
+    try {
+      const response = await fetch(`http://localhost:8000/api/users/${selectedUser.id}`, {
+        method: 'DELETE'
+      });
+      const data = await response.json();
+
+      if (data.success) {
+        setSuccess('User suspended successfully');
+        setShowDeleteConfirm(false);
+        loadUsers();
+        setSelectedUser(null);
+      } else {
+        setError(data.message || 'Failed to suspend user');
+      }
+    } catch (err) {
+      setError('Error suspending user');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditModal = (user) => {
+    setSelectedUser(user);
+    setFormData({
+      full_name: user.full_name,
+      email: user.email,
+      role_id: user.role_id,
+      is_active: user.is_active
+    });
+    setShowEditModal(true);
+  };
+
+  const openDeleteConfirm = (user) => {
+    setSelectedUser(user);
+    setShowDeleteConfirm(true);
+  };
+
+  const resetForm = () => {
+    setFormData({
+      username: '',
+      password: '',
+      full_name: '',
+      email: '',
+      role_id: '',
+      is_active: true
+    });
+    setSelectedUser(null);
+  };
 
   const handleLogoutClick = () => {
     setShowLogoutConfirm(true);
   };
 
   const confirmLogout = () => {
-    // Control Layer: Call authController to handle logout
     authController.logout();
     router.push('/');
   };
@@ -45,6 +243,7 @@ export default function UserAdminDashboard() {
 
   return (
     <div className="min-h-screen bg-gray-100">
+      {/* Header */}
       <header className="bg-gradient-to-r from-indigo-600 to-purple-600 shadow-lg">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 flex justify-between items-center">
           <div>
@@ -61,6 +260,7 @@ export default function UserAdminDashboard() {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Welcome Card */}
         <div className="bg-white rounded-lg shadow-md p-6 mb-6">
           <h2 className="text-2xl font-semibold text-gray-800 mb-2">
             Welcome, {user.full_name}!
@@ -70,139 +270,368 @@ export default function UserAdminDashboard() {
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-6">
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-between">
+        {/* Alert Messages */}
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+            {error}
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg mb-4">
+            {success}
+          </div>
+        )}
+
+        {/* Tabs */}
+        <div className="bg-white rounded-lg shadow-md mb-6">
+          <div className="border-b border-gray-200">
+            <nav className="flex -mb-px">
+              <button
+                onClick={() => setActiveTab('manage-accounts')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 transition ${
+                  activeTab === 'manage-accounts'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Manage User Accounts
+              </button>
+              <button
+                onClick={() => setActiveTab('manage-profile')}
+                className={`px-6 py-4 text-sm font-medium border-b-2 transition ${
+                  activeTab === 'manage-profile'
+                    ? 'border-indigo-600 text-indigo-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                }`}
+              >
+                Manage User Profile
+              </button>
+            </nav>
+          </div>
+
+          {/* Tab Content */}
+          <div className="p-6">
+            {activeTab === 'manage-accounts' && (
               <div>
-                <p className="text-gray-600 text-sm mb-1">Total Users</p>
-                <p className="text-3xl font-bold text-indigo-600">24</p>
-              </div>
-              <div className="p-3 rounded-full bg-indigo-100">
-                <svg className="w-8 h-8 text-indigo-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
+                {/* Search and Create */}
+                <div className="flex gap-4 mb-6">
+                  <div className="flex-1 flex gap-2">
+                    <input
+                      type="text"
+                      placeholder="Search by username, name, or email..."
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && handleSearch()}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
+                    />
+                    <button
+                      onClick={handleSearch}
+                      className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition"
+                    >
+                      Search
+                    </button>
+                  </div>
+                  <button
+                    onClick={() => setShowCreateModal(true)}
+                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                  >
+                    + Create User
+                  </button>
+                </div>
 
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-between">
+                {/* Users Table */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Username</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Full Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Email</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {users.map((u) => (
+                        <tr key={u.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.id}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{u.username}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.full_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{u.email}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{u.role_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              u.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {u.is_active ? 'Active' : 'Suspended'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => openEditModal(u)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-4"
+                            >
+                              Update
+                            </button>
+                            <button
+                              onClick={() => openDeleteConfirm(u)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Suspend
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'manage-profile' && (
               <div>
-                <p className="text-gray-600 text-sm mb-1">Active Sessions</p>
-                <p className="text-3xl font-bold text-green-600">18</p>
+                <h3 className="text-lg font-semibold text-gray-800 mb-4">My Profile</h3>
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                    <input
+                      type="text"
+                      value={user.username}
+                      disabled
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                    <input
+                      type="text"
+                      value={profileData.full_name}
+                      onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                    <input
+                      type="email"
+                      value={profileData.email}
+                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                    <input
+                      type="text"
+                      value={user.role_name}
+                      disabled
+                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
+                    />
+                  </div>
+                  <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition">
+                    Save Changes
+                  </button>
+                </div>
               </div>
-              <div className="p-3 rounded-full bg-green-100">
-                <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm mb-1">System Health</p>
-                <p className="text-3xl font-bold text-blue-600">98%</p>
-              </div>
-              <div className="p-3 rounded-full bg-blue-100">
-                <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-600 text-sm mb-1">Pending Tasks</p>
-                <p className="text-3xl font-bold text-yellow-600">7</p>
-              </div>
-              <div className="p-3 rounded-full bg-yellow-100">
-                <svg className="w-8 h-8 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
-            <div className="flex items-center mb-4">
-              <div className="p-3 rounded-full bg-purple-100 mr-4">
-                <svg className="w-6 h-6 text-purple-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">User Management</h3>
-            </div>
-            <p className="text-gray-600 text-sm">
-              Manage user accounts, roles, and permissions across the platform.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
-            <div className="flex items-center mb-4">
-              <div className="p-3 rounded-full bg-green-100 mr-4">
-                <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">System Logs</h3>
-            </div>
-            <p className="text-gray-600 text-sm">
-              View and analyze system activity logs and audit trails.
-            </p>
-          </div>
-
-          <div className="bg-white rounded-lg shadow-md p-6 hover:shadow-lg transition-shadow cursor-pointer">
-            <div className="flex items-center mb-4">
-              <div className="p-3 rounded-full bg-blue-100 mr-4">
-                <svg className="w-6 h-6 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <h3 className="text-lg font-semibold text-gray-800">Settings</h3>
-            </div>
-            <p className="text-gray-600 text-sm">
-              Configure system settings, security policies, and integrations.
-            </p>
+            )}
           </div>
         </div>
       </main>
 
-      {/* Logout Confirmation Modal (Boundary Layer - UI Component) */}
-      {showLogoutConfirm && (
+      {/* Create User Modal */}
+      {showCreateModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-2xl p-6 max-w-md w-full mx-4">
-            <div className="flex items-center mb-4">
-              <div className="bg-yellow-100 rounded-full p-3 mr-4">
-                <svg className="w-6 h-6 text-yellow-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                </svg>
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Create New User</h3>
+            <form onSubmit={handleCreateUser} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                <input
+                  type="text"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
               </div>
-              <h3 className="text-xl font-bold text-gray-900">Confirm Logout</h3>
-            </div>
-            
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
+                <input
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                <select
+                  value={formData.role_id}
+                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
+                  required
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                >
+                  <option value="">Select a role</option>
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>{role.role_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50"
+                >
+                  {loading ? 'Creating...' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateModal(false); resetForm(); }}
+                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit User Modal */}
+      {showEditModal && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Update User: {selectedUser.username}</h3>
+            <form onSubmit={handleUpdateUser} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
+                <select
+                  value={formData.role_id}
+                  onChange={(e) => setFormData({ ...formData, role_id: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                >
+                  {roles.map((role) => (
+                    <option key={role.id} value={role.id}>{role.role_name}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="mr-2"
+                />
+                <label className="text-sm font-medium text-gray-700">Active</label>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50"
+                >
+                  {loading ? 'Updating...' : 'Update'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowEditModal(false); resetForm(); }}
+                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteConfirm && selectedUser && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Confirm Suspend</h3>
             <p className="text-gray-600 mb-6">
-              Are you sure you want to logout? You will need to login again to access the dashboard.
+              Are you sure you want to suspend user <strong>{selectedUser.username}</strong>? This action cannot be undone.
             </p>
-            
-            <div className="flex space-x-3">
+            <div className="flex gap-4">
               <button
-                onClick={cancelLogout}
-                className="flex-1 px-4 py-2 bg-gray-200 hover:bg-gray-300 text-gray-800 font-semibold rounded-lg transition duration-200"
+                onClick={handleDeleteUser}
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition disabled:opacity-50"
+              >
+                {loading ? 'Suspending...' : 'Suspend'}
+              </button>
+              <button
+                onClick={() => { setShowDeleteConfirm(false); setSelectedUser(null); }}
+                className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
               >
                 Cancel
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Logout Confirmation Modal */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Confirm Logout</h3>
+            <p className="text-gray-600 mb-6">Are you sure you want to logout?</p>
+            <div className="flex gap-4">
               <button
                 onClick={confirmLogout}
-                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition duration-200"
+                className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
               >
                 Logout
+              </button>
+              <button
+                onClick={cancelLogout}
+                className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+              >
+                Cancel
               </button>
             </div>
           </div>

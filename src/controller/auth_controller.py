@@ -70,11 +70,11 @@ class AuthController:
             # Extract user data
             user_data = response.data[0]
             
-            # Check if user is active
+            # Check if user is active (not suspended)
             if not user_data.get('is_active', True):
                 return AuthResponse(
                     success=False,
-                    message="Account is inactive. Please contact administrator."
+                    message="Account has been suspended. Please contact administrator."
                 )
             
             # Get password from users table

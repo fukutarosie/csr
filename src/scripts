@@ -1,0 +1,65 @@
+"""
+Password Migration Script
+This script migrates plain text passwords in the database to bcrypt hashed passwords.
+Run this ONCE after deploying the password hashing feature.
+"""
+
+import asyncio
+from controllers.auth_controller import auth_controller
+
+
+async def migrate_passwords():
+    """
+    Migrate all plain text passwords to hashed passwords
+    """
+    print("Starting password migration...")
+    
+    try:
+        # Get all users from database
+        response = auth_controller.supabase.table("users").select("*").execute()
+        
+        if not response.data:
+            print("No users found in database.")
+            return
+        
+        migrated_count = 0
+        skipped_count = 0
+        
+        for user in response.data:
+            user_id = user.get('id')
+            username = user.get('username')
+            password = user.get('password')
+            
+            # Check if password is already hashed
+            is_hashed = password and password.startswith(('$2b$', '$2a$', '$2y$'))
+            
+            if is_hashed:
+                print(f"Skipping user '{username}' - already hashed")
+                skipped_count += 1
+                continue
+            
+            # Hash the plain text password
+            hashed_password = auth_controller.hash_password(password)
+            
+            # Update the user's password in database
+            auth_controller.supabase.table("users").update(
+                {"password": hashed_password}
+            ).eq("id", user_id).execute()
+            
+            print(f"✓ Migrated password for user '{username}'")
+            migrated_count += 1
+        
+        print(f"\n--- Migration Complete ---")
+        print(f"Migrated: {migrated_count} users")
+        print(f"Skipped: {skipped_count} users (already hashed)")
+        
+    except Exception as e:
+        print(f"Error during migration: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    asyncio.run(migrate_passwords())
+
+
+

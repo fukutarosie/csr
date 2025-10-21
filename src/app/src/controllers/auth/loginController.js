@@ -1,6 +1,21 @@
 /**
- * Login Controller - Handles User Authentication and Login
- * Part of Authentication System (BCE Framework - Boundary/Control Layer)
+ * BCE Architecture - CONTROL Layer
+ * 
+ * Controller: loginController
+ * Layer: Control (Business Logic)
+ * 
+ * This controller represents the Control layer in the BCE pattern.
+ * It coordinates authentication workflow between the Boundary (UI) and Entity (data storage) layers.
+ * 
+ * Responsibilities:
+ * - Coordinate authentication workflow
+ * - Communicate with backend API
+ * - Manage authentication state via tokenController and sessionController
+ * - Determine user dashboard routing
+ * 
+ * Dependencies:
+ * - Control: tokenController (JWT management)
+ * - Control: sessionController (session management)
  */
 
 import { tokenController } from './tokenController';

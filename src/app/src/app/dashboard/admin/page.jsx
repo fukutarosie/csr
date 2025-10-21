@@ -1,3 +1,24 @@
+/**
+ * BCE Architecture - BOUNDARY Layer
+ * 
+ * Component: UserAdminDashboard
+ * Layer: Boundary (User Interface)
+ * 
+ * Responsibilities:
+ * - Display admin dashboard interface
+ * - Show user management tables and forms
+ * - Capture user management actions (create, update, delete)
+ * - Delegate business operations to Control layer controllers
+ * 
+ * Dependencies:
+ * - Control: sessionController, logoutController (authentication)
+ * - Control: viewUserController, createUserController, updateUserController, deleteUserController (user management)
+ * - Control: roleController (role management)
+ * 
+ * BCE Flow:
+ * User Action → Dashboard (Boundary) → Specific Controller (Control) → Backend API
+ */
+
 'use client';
 
 import { useEffect, useState } from 'react';

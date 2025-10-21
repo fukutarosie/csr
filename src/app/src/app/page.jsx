@@ -1,3 +1,22 @@
+/**
+ * BCE Architecture - BOUNDARY Layer
+ * 
+ * Component: LoginPage
+ * Layer: Boundary (User Interface)
+ * 
+ * This component represents the Boundary layer in the BCE pattern.
+ * It handles user interaction and delegates authentication logic to the Control layer.
+ * 
+ * Responsibilities:
+ * - Display login form
+ * - Capture user input
+ * - Show error messages and loading states
+ * - Delegate authentication to loginController (Control layer)
+ * 
+ * Dependencies:
+ * - Control: loginController
+ */
+
 'use client';
 
 import { useState, useEffect } from 'react';

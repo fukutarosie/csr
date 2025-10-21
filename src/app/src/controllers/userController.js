@@ -29,6 +29,7 @@ class UserController {
   }
 
   async searchUsers(query) {
+    // Search by username or full_name
     return await authController.authenticatedFetch(`${API_BASE_URL}/api/users/search`, {
       method: 'POST',
       body: JSON.stringify({ query })

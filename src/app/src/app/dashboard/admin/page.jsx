@@ -304,7 +304,7 @@ export default function UserAdminDashboard() {
                   <div className="flex-1 flex gap-2">
                     <input
                       type="text"
-                      placeholder="Search by username, name, or email..."
+                      placeholder="Search by username or full name..."
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleSearch()}

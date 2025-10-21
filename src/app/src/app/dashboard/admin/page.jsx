@@ -1,9 +1,38 @@
+/**
+ * BCE Architecture - BOUNDARY Layer
+ * 
+ * Component: UserAdminDashboard
+ * Layer: Boundary (User Interface)
+ * 
+ * Responsibilities:
+ * - Display admin dashboard interface
+ * - Show user management tables and forms
+ * - Capture user management actions (create, update, delete)
+ * - Delegate business operations to Control layer controllers
+ * 
+ * Dependencies:
+ * - Control: sessionController, logoutController (authentication)
+ * - Control: viewUserController, createUserController, updateUserController, deleteUserController (user management)
+ * - Control: roleController (role management)
+ * 
+ * BCE Flow:
+ * User Action → Dashboard (Boundary) → Specific Controller (Control) → Backend API
+ */
+
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { authController } from '@/controllers/authController';
-import { userController } from '@/controllers/userController';
+
+// NEW MODULAR CONTROLLERS (Recommended)
+import { sessionController, logoutController } from '@/controllers/auth';
+import { 
+  viewUserController, 
+  createUserController,
+  updateUserController,
+  deleteUserController,
+  roleController 
+} from '@/controllers/user';
 
 export default function UserAdminDashboard() {
   const [user, setUser] = useState(null);
@@ -42,12 +71,13 @@ export default function UserAdminDashboard() {
   });
 
   useEffect(() => {
-    if (!authController.isAuthenticated()) {
+    // NEW MODULAR APPROACH
+    if (!sessionController.isAuthenticated()) {
       router.push('/');
       return;
     }
 
-    const currentUser = authController.getCurrentUser();
+    const currentUser = sessionController.getCurrentUser();
     
     if (currentUser.role_code !== 'USER_ADMIN') {
       router.push(currentUser.dashboard_route || '/');
@@ -67,25 +97,25 @@ export default function UserAdminDashboard() {
 
   const loadUsers = async () => {
       try {
-        const response = await userController.getUsers();
-        const data = await response.json();
-        if (data.success) {
-          setUsers(data.users);
-        }
+        // NEW MODULAR APPROACH
+        const response = await viewUserController.getAllUsers();
+        const users = await viewUserController.parseUserListResponse(response);
+        setUsers(users);
       } catch (err) {
         setError('Error loading users');
+        console.error('Load users error:', err);
       }
   };
 
   const loadRoles = async () => {
       try {
-        const response = await userController.getRoles();
-        const data = await response.json();
-        if (data.success) {
-          setRoles(data.roles);
-        }
+        // NEW MODULAR APPROACH
+        const response = await roleController.getAllRoles();
+        const roles = await roleController.parseRolesResponse(response);
+        setRoles(roles);
       } catch (err) {
         setError('Error loading roles');
+        console.error('Load roles error:', err);
       }
   };
 
@@ -95,15 +125,13 @@ export default function UserAdminDashboard() {
       return;
     }
     try {
-      const response = await userController.searchUsers(searchQuery);
-      const data = await response.json();
-      if (data.success) {
-        setUsers(data.users);
-      } else {
-        setError(data.message);
-      }
+      // NEW MODULAR APPROACH
+      const response = await viewUserController.searchUsers(searchQuery);
+      const users = await viewUserController.parseUserListResponse(response);
+      setUsers(users);
     } catch (err) {
       setError('Search failed');
+      console.error('Search error:', err);
     }
   };
 
@@ -113,8 +141,17 @@ export default function UserAdminDashboard() {
     setError('');
     setCreateError('');
     setSuccess('');
+    
+    // NEW MODULAR APPROACH - Validate before creating
+    const validation = createUserController.validateUserData(formData);
+    if (!validation.valid) {
+      setCreateError(validation.errors.join(', '));
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const response = await userController.createUser(formData);
+      const response = await createUserController.createUser(formData);
       const data = await response.json();
       if (response.ok && data.success) {
         setSuccess('User created successfully');
@@ -122,11 +159,11 @@ export default function UserAdminDashboard() {
         loadUsers();
         resetForm();
       } else {
-        // Prefer showing error within the modal
         setCreateError(data.detail || data.message || 'Failed to create user');
       }
     } catch (err) {
       setCreateError('Error creating user');
+      console.error('Create user error:', err);
     } finally {
       setLoading(false);
     }
@@ -137,13 +174,24 @@ export default function UserAdminDashboard() {
     setLoading(true);
     setError('');
     setSuccess('');
+    
+    const updateData = {
+      full_name: formData.full_name,
+      email: formData.email,
+      role_id: formData.role_id ? parseInt(formData.role_id) : null,
+      is_active: formData.is_active
+    };
+    
+    // NEW MODULAR APPROACH - Validate before updating
+    const validation = updateUserController.validateUpdateData(updateData);
+    if (!validation.valid) {
+      setError(validation.errors.join(', '));
+      setLoading(false);
+      return;
+    }
+    
     try {
-      const response = await userController.updateUser(selectedUser.id, {
-        full_name: formData.full_name,
-        email: formData.email,
-        role_id: formData.role_id ? parseInt(formData.role_id) : null,
-        is_active: formData.is_active
-      });
+      const response = await updateUserController.updateUser(selectedUser.id, updateData);
       const data = await response.json();
       if (data.success) {
         setSuccess('User updated successfully');
@@ -155,6 +203,7 @@ export default function UserAdminDashboard() {
       }
     } catch (err) {
       setError('Error updating user');
+      console.error('Update user error:', err);
     } finally {
       setLoading(false);
     }
@@ -165,18 +214,21 @@ export default function UserAdminDashboard() {
     setError('');
     setSuccess('');
     try {
-      const response = await userController.deleteUser(selectedUser.id);
-      const data = await response.json();
-      if (data.success) {
-        setSuccess('User suspended successfully');
+      // NEW MODULAR APPROACH
+      const response = await deleteUserController.deleteUser(selectedUser.id);
+      const result = await deleteUserController.parseDeleteResponse(response);
+      
+      if (result.success) {
+        setSuccess(result.message);
         setShowDeleteConfirm(false);
         loadUsers();
         setSelectedUser(null);
       } else {
-        setError(data.message || 'Failed to suspend user');
+        setError('Failed to suspend user');
       }
     } catch (err) {
-      setError('Error suspending user');
+      setError(err.message || 'Error suspending user');
+      console.error('Delete user error:', err);
     } finally {
       setLoading(false);
     }
@@ -215,8 +267,8 @@ export default function UserAdminDashboard() {
   };
 
   const confirmLogout = () => {
-    authController.logout();
-    router.push('/');
+    // NEW MODULAR APPROACH
+    logoutController.logoutAndRedirect(router);
   };
 
   const cancelLogout = () => {

@@ -1,10 +1,32 @@
+/**
+ * BCE Architecture - BOUNDARY Layer
+ * 
+ * Component: LoginPage
+ * Layer: Boundary (User Interface)
+ * 
+ * This component represents the Boundary layer in the BCE pattern.
+ * It handles user interaction and delegates authentication logic to the Control layer.
+ * 
+ * Responsibilities:
+ * - Display login form
+ * - Capture user input
+ * - Show error messages and loading states
+ * - Delegate authentication to loginController (Control layer)
+ * 
+ * Dependencies:
+ * - Control: loginController
+ */
+
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { authController } from '@/controllers/authController';
 
-import { useEffect } from 'react';
+// NEW MODULAR APPROACH (Recommended)
+import { loginController } from '@/controllers/auth';
+
+// OLD APPROACH (Still works for backward compatibility)
+// import { authController } from '@/controllers/authController';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -32,17 +54,30 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      // Pass role to backend for filtering
-      const response = await authController.login({ username, password, role_code: role });
+      // NEW MODULAR APPROACH
+      const response = await loginController.login({ 
+        username, 
+        password, 
+        role_code: role 
+      });
 
       if (response.success) {
-        const dashboardRoute = authController.getUserDashboardRoute();
+        const dashboardRoute = loginController.getDashboardRoute();
         router.push(dashboardRoute || '/dashboard');
       } else {
         setError(response.message);
       }
+
+      // OLD APPROACH (Commented out - still works)
+      // const response = await authController.login({ username, password, role_code: role });
+      // if (response.success) {
+      //   const dashboardRoute = authController.getUserDashboardRoute();
+      //   router.push(dashboardRoute || '/dashboard');
+      // }
+      
     } catch (err) {
       setError('An unexpected error occurred. Please try again.');
+      console.error('Login error:', err);
     } finally {
       setLoading(false);
     }

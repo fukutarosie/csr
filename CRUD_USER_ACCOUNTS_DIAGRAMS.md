@@ -1,5 +1,18 @@
 # CRUD User Accounts System Diagrams
 
+> **Last Updated**: December 2024  
+> **Controllers**: `create_user_account_controller.py`, `view_user_account_controller.py`, `update_user_account_controller.py`, `suspend_user_account_controller.py`, `search_user_account_controller.py`  
+> **Architecture**: BCE Pattern with separate controllers per use case
+
+This document provides comprehensive diagrams for the User Account Management system following the BCE (Boundary-Control-Entity) architecture pattern. Each CRUD operation is handled by a dedicated controller:
+- **CreateUserAccountController**: Handles user creation with validation and password hashing
+- **ViewUserAccountController**: Handles retrieving and displaying user accounts
+- **UpdateUserAccountController**: Handles user updates with conflict checking
+- **SuspendUserAccountController**: Handles account suspension and activation
+- **SearchUserAccountController**: Handles multi-field user search operations
+
+---
+
 ## 1. Sequence Diagram - Create User Account
 
 ```mermaid
@@ -196,6 +209,19 @@ classDiagram
         -update_user_status(user_id, is_active) bool
     }
 
+    class SearchUserAccountController {
+        <<Control>>
+        -SupabaseClient supabase
+        +search_users(query) List~User~
+        +search_users_by_username(query) List~User~
+        +search_users_by_full_name(query) List~User~
+        +search_users_by_email(query) List~User~
+        +search_users_by_role(query, role_code) List~User~
+        +search_active_users(query) List~User~
+        +search_suspended_users(query) List~User~
+        -deduplicate_users(users) List~User~
+    }
+
     %% Entity Layer
     class User {
         <<Entity>>
@@ -244,16 +270,19 @@ classDiagram
     AdminPage ..> ViewUserAccountController : uses
     AdminPage ..> UpdateUserAccountController : uses
     AdminPage ..> SuspendUserAccountController : uses
+    AdminPage ..> SearchUserAccountController : uses
     
     CreateUserAccountController ..> User : creates
     ViewUserAccountController ..> User : retrieves
     UpdateUserAccountController ..> User : modifies
     SuspendUserAccountController ..> User : updates status
+    SearchUserAccountController ..> User : searches
     
     CreateUserAccountController ..> UserResponse : returns
     ViewUserAccountController ..> UserResponse : returns
     UpdateUserAccountController ..> UserResponse : returns
     SuspendUserAccountController ..> UserResponse : returns
+    SearchUserAccountController ..> UserResponse : returns
     
     User --> Role : has
     UserResponse --> User : contains

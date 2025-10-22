@@ -130,6 +130,32 @@ sequenceDiagram
     end
 ```
 
+## 5. Sequence Diagram - Search User Account
+
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as AdminPage<br/>(Boundary)
+    participant ViewController as ViewUserAccountController<br/>(Control)
+    participant Entity as User<br/>(Entity)
+    participant DB as Supabase DB
+
+    Admin->>AdminPage: Enter search query
+    AdminPage->>ViewController: search_users(query)
+    ViewController->>DB: SELECT * FROM user_details WHERE username ILIKE query OR email ILIKE query OR full_name ILIKE query
+    DB-->>ViewController: Filtered user records
+    ViewController->>Entity: Convert to User objects
+    Entity-->>ViewController: Filtered User entities
+    ViewController-->>AdminPage: Filtered user list
+    AdminPage-->>Admin: Display filtered results
+```
+
+## Notes
+
+- The sequence diagrams above match the BCE class diagram in `BCE_CLASS_DIAGRAM_LOGIN_LOGOUT.md`.
+- Use these diagrams as a reference when implementing, testing, or documenting the user management flows.
+
+
 ## 5. BCE Class Diagram - User Account Management
 
 ```mermaid

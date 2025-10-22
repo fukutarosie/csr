@@ -56,7 +56,7 @@ class CreateUserAccountController:
         Returns:
             True if valid, False otherwise
         """
-        return password and len(password) >= 8
+        return bool(password)  # Only check if password is not empty
 
     def validate_email(self, email: str) -> bool:
         """
@@ -124,12 +124,6 @@ class CreateUserAccountController:
                 return {
                     'success': False,
                     'message': 'Invalid username. Must be 3-50 characters, alphanumeric and underscore only.'
-                }
-
-            if not self.validate_password(password):
-                return {
-                    'success': False,
-                    'message': 'Invalid password. Must be at least 8 characters.'
                 }
 
             if not self.validate_email(email):

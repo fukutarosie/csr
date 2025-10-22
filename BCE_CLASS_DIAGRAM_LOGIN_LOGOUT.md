@@ -1,15 +1,7 @@
 # BCE Class Diagram - User Admin Login & Logout
 
-> **Last Updated**: December 2024  
-> **Controllers**: `login_controller.py`, `logout_controller.py`  
-> **Architecture**: BCE Pattern with separate controllers per use case
-
 ## Overview
 This document describes the BCE (Boundary-Control-Entity) architecture for User Admin authentication (login and logout functionality).
-
-The authentication system follows the BCE pattern with dedicated controllers:
-- **LoginController** (`src/controller/login_controller.py`): Handles login use case with JWT token generation
-- **LogoutController** (`src/controller/logout_controller.py`): Handles logout use case (client-side token removal)
 
 ---
 
@@ -79,25 +71,19 @@ The authentication system follows the BCE pattern with dedicated controllers:
               ▼
 ┌──────────────────────────────────────────┐
 │   <<Controller>>                         │
-│   LoginController                        │
+│   AuthController (Backend)               │
 ├──────────────────────────────────────────┤
 │ - supabase: Client                       │
-│ - SECRET_KEY: string                     │
-│ - ALGORITHM: string                      │
 ├──────────────────────────────────────────┤
-│ + __init__(supabase_client)              │
+[hr]
+
+│ + __init__()                             │
+
 │ + hash_password(password: str): str      │
 │ + verify_password(plain, hashed): bool   │
-│ + create_access_token(data: dict): str   │
 │ + login(username, password): AuthResponse│
-└──────────────────────────────────────────┘
-
-┌──────────────────────────────────────────┐
-│   <<Controller>>                         │
-│   LogoutController                       │
-├──────────────────────────────────────────┤
-│ + logout(): dict                         │
-│ + logout_with_token_invalidation(): dict │
+│ + verify_user(user_id: int): bool        │
+│ + get_user_by_id(user_id): User          │
 └──────────────────────────────────────────┘
               │
               │ uses/creates
@@ -315,37 +301,28 @@ User session is managed entirely client-side via localStorage.
   - `GET /api/verify/{user_id}`: Verifies user exists
     - Output: `{exists: boolean, user_id: int}`
 
-#### 5. **LoginController (Backend)** (`src/controller/login_controller.py`)
-- **Purpose**: Backend business logic for user authentication (Login use case)
+#### 5. **AuthController (Backend)** (`src/controller/auth_controller.py`)
+- **Purpose**: Backend business logic for authentication
 - **Attributes**:
   - `supabase`: Client - Supabase database connection
-  - `SECRET_KEY`: string - JWT secret key
-  - `ALGORITHM`: string - JWT algorithm (HS256)
 - **Methods**:
-  - `__init__(supabase_client)`: Initializes with Supabase client
+  - `__init__()`: Initializes Supabase client
   - `hash_password(password: str)`: str - Hashes password with bcrypt
-  - `verify_password(plain: str, hashed: str)`: bool - Verifies password against hash
-  - `create_access_token(data: dict)`: str - Generates JWT access token
+  - `verify_password(plain: str, hashed: str)`: bool - Verifies password
   - `login(username: str, password: str)`: AuthResponse
-    - Queries database for user from user_details view
+    - Queries database for user
     - Checks if account is active (not suspended)
-    - Verifies password using bcrypt
+    - Verifies password
     - Updates last_login timestamp
-    - Creates JWT token with user data
-    - Creates and returns User entity wrapped in AuthResponse with token
-
-#### 6. **LogoutController (Backend)** (`src/controller/logout_controller.py`)
-- **Purpose**: Backend business logic for user logout (Logout use case)
-- **Methods**:
-  - `logout()`: dict - Returns success message for client-side logout
-  - `logout_with_token_invalidation()`: dict - Returns success message (optional token blacklisting)
-- **Note**: Logout is primarily client-side (removing token from localStorage). Backend controller provides optional endpoint for logging/audit purposes.
+    - Creates and returns User entity wrapped in AuthResponse
+  - `verify_user(user_id: int)`: bool - Checks if user exists and is active
+  - `get_user_by_id(user_id: int)`: User - Retrieves user by ID
 
 ---
 
 ### **ENTITY LAYER (Data Models)**
 
-#### 7. **User** (`src/entity/user.py`)
+#### 6. **User** (`src/entity/user.py`)
 - **Purpose**: Represents a user in the system
 - **Attributes**:
   - `id`: int - Primary key
@@ -362,14 +339,14 @@ User session is managed entirely client-side via localStorage.
   - `from_db(data: dict)`: User - Static factory method to create User from database dict
   - `to_dict()`: dict - Converts User object to dictionary for JSON serialization
 
-#### 8. **AuthResponse** (`src/entity/auth_response.py`)
+#### 7. **AuthResponse** (`src/entity/auth_response.py`)
 - **Purpose**: Wraps authentication result
 - **Attributes**:
   - `success`: bool - Whether authentication succeeded
   - `message`: string - Response message (success or error)
   - `user`: User|None - User entity if successful, None if failed
 
-#### 9. **Role** (`src/entity/role.py`)
+#### 8. **Role** (`src/entity/role.py`)
 - **Purpose**: Represents a user role
 - **Attributes**:
   - `id`: int - Primary key
@@ -383,7 +360,7 @@ User session is managed entirely client-side via localStorage.
 
 ### **DATABASE LAYER**
 
-#### 10. **Supabase Client**
+#### 9. **Supabase Client**
 - **Purpose**: Database connection and query interface
 - **Methods**:
   - `table(name)`: Selects a table
@@ -394,7 +371,7 @@ User session is managed entirely client-side via localStorage.
   - `eq(column, value)`: Filters by equality
   - `execute()`: Executes query
 
-#### 11. **PostgreSQL Database**
+#### 10. **PostgreSQL Database**
 - **Tables**:
   - `users`: Stores user accounts
     - Columns: id, username, password, email, full_name, role_id, is_active, last_login, created_at
@@ -412,27 +389,25 @@ User session is managed entirely client-side via localStorage.
 1. **User Input** → LoginPage (Boundary)
 2. **UI Action** → AuthController.login() (Frontend Control)
 3. **HTTP Request** → FastAPI POST /api/login (API)
-4. **API Call** → LoginController.login() (Backend Control)
+4. **API Call** → AuthController.login() (Backend Control)
 5. **Database Query** → Supabase SELECT from user_details
 6. **Business Logic** → Validate credentials, check active status
 7. **Database Update** → UPDATE last_login timestamp
 8. **Entity Creation** → User.from_db() creates User entity
-9. **JWT Token** → LoginController.create_access_token() generates JWT
-10. **Response** → AuthResponse with User entity and JWT token
-11. **Serialization** → User.to_dict() converts to JSON
-12. **HTTP Response** → Return JSON to frontend
-13. **Storage** → AuthController stores token in localStorage
-14. **Navigation** → Redirect to dashboard
+9. **Response** → AuthResponse with User entity
+10. **Serialization** → User.to_dict() converts to JSON
+11. **HTTP Response** → Return JSON to frontend
+12. **Storage** → AuthController stores in localStorage
+13. **Navigation** → Redirect to dashboard
 
 ### **Logout Flow:**
 1. **User Click** → UserAdminDashboard (Boundary)
 2. **Confirmation** → Show modal
 3. **Confirm Action** → AuthController.logout() (Frontend Control)
-4. **Remove Data** → Delete token from localStorage
-5. **Optional** → Call LogoutController.logout() for audit logging
-6. **Navigation** → Redirect to login page
+4. **Remove Data** → Delete from localStorage
+5. **Navigation** → Redirect to login page
 
-**Note**: Logout is primarily client-side! No backend API call or database update required because authentication uses JWT tokens (stateless).
+**Note**: Logout is entirely client-side! No backend API call or database update needed because authentication is stateless.
 
 ---
 
@@ -459,30 +434,25 @@ User session is managed entirely client-side via localStorage.
 ## Testing Points
 
 ### **Unit Tests:**
-- LoginController.login() with valid credentials
-- LoginController.login() with invalid credentials
-- LoginController.login() with suspended account
-- LoginController.verify_password() correctly validates passwords
-- LoginController.create_access_token() generates valid JWT
-- LogoutController.logout() returns success message
-- AuthController.logout() (Frontend) clears localStorage
+- AuthController.login() with valid credentials
+- AuthController.login() with invalid credentials
+- AuthController.login() with suspended account
+- AuthController.logout() clears localStorage
 - User.from_db() creates correct entity
 - User.to_dict() serializes correctly
 
 ### **Integration Tests:**
-- POST /api/login with valid user returns 200 with JWT token
+- POST /api/login with valid user returns 200
 - POST /api/login with invalid user returns 200 with success=false
 - POST /api/login updates last_login in database
-- POST /api/logout (optional) returns success status
+- GET /api/verify/{user_id} returns correct status
 
 ### **E2E Tests:**
-- User can login with correct credentials and receive JWT token
+- User can login with correct credentials
 - User redirected to correct dashboard based on role
 - User cannot login with incorrect password
 - Suspended user cannot login
-- JWT token stored in localStorage after successful login
 - User can logout successfully
-- After logout, JWT token removed from localStorage
 - After logout, user redirected to login page
 
 ---

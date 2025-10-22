@@ -198,6 +198,52 @@ class ViewUserAccountController:
             print(f"Error fetching suspended users: {e}")
             return []
 
+    def search_users(self, query: str) -> List[User]:
+        """
+        Search for users by username, full name, or email.
+        
+        Args:
+            query: Search term to match against username, full_name, or email
+            
+        Returns:
+            List of User objects matching the search query
+        """
+        try:
+            # Use Supabase's text search or filter
+            # Search across username, full_name, and email fields
+            query_lower = query.lower()
+            
+            result = self.supabase.from_('user_details').select('*').execute()
+            users = []
+            
+            if result.data:
+                for user_data in result.data:
+                    # Check if query matches username, full_name, or email
+                    username_match = query_lower in user_data.get('username', '').lower()
+                    fullname_match = query_lower in user_data.get('full_name', '').lower()
+                    email_match = query_lower in user_data.get('email', '').lower()
+                    
+                    if username_match or fullname_match or email_match:
+                        users.append(User(
+                            id=user_data['id'],
+                            username=user_data['username'],
+                            full_name=user_data['full_name'],
+                            email=user_data.get('email'),
+                            role_id=user_data.get('role_id'),
+                            role_name=user_data.get('role_name'),
+                            role_code=user_data.get('role_code'),
+                            dashboard_route=user_data.get('dashboard_route'),
+                            is_active=user_data.get('is_active', True),
+                            last_login=user_data.get('last_login')
+                        ))
+            
+            return users
+        except Exception as e:
+            print(f"Error searching users: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+
     def get_all_roles(self):
         """
         Retrieve all available roles.

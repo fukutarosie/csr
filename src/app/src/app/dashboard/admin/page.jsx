@@ -1,38 +1,9 @@
-/**
- * BCE Architecture - BOUNDARY Layer
- * 
- * Component: UserAdminDashboard
- * Layer: Boundary (User Interface)
- * 
- * Responsibilities:
- * - Display admin dashboard interface
- * - Show user management tables and forms
- * - Capture user management actions (create, update, delete)
- * - Delegate business operations to Control layer controllers
- * 
- * Dependencies:
- * - Control: sessionController, logoutController (authentication)
- * - Control: viewUserController, createUserController, updateUserController, deleteUserController (user management)
- * - Control: roleController (role management)
- * 
- * BCE Flow:
- * User Action → Dashboard (Boundary) → Specific Controller (Control) → Backend API
- */
-
 'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-// NEW MODULAR CONTROLLERS (Recommended)
-import { sessionController, logoutController } from '@/controllers/auth';
-import { 
-  viewUserController, 
-  createUserController,
-  updateUserController,
-  deleteUserController,
-  roleController 
-} from '@/controllers/user';
+import { authController } from '@/controllers/authController';
+import { userController } from '@/controllers/userController';
 
 export default function UserAdminDashboard() {
   const [user, setUser] = useState(null);
@@ -71,13 +42,12 @@ export default function UserAdminDashboard() {
   });
 
   useEffect(() => {
-    // NEW MODULAR APPROACH
-    if (!sessionController.isAuthenticated()) {
+    if (!authController.isAuthenticated()) {
       router.push('/');
       return;
     }
 
-    const currentUser = sessionController.getCurrentUser();
+    const currentUser = authController.getCurrentUser();
     
     if (currentUser.role_code !== 'USER_ADMIN') {
       router.push(currentUser.dashboard_route || '/');
@@ -97,25 +67,25 @@ export default function UserAdminDashboard() {
 
   const loadUsers = async () => {
       try {
-        // NEW MODULAR APPROACH
-        const response = await viewUserController.getAllUsers();
-        const users = await viewUserController.parseUserListResponse(response);
-        setUsers(users);
+        const response = await userController.getUsers();
+        const data = await response.json();
+        if (data.success) {
+          setUsers(data.users);
+        }
       } catch (err) {
         setError('Error loading users');
-        console.error('Load users error:', err);
       }
   };
 
   const loadRoles = async () => {
       try {
-        // NEW MODULAR APPROACH
-        const response = await roleController.getAllRoles();
-        const roles = await roleController.parseRolesResponse(response);
-        setRoles(roles);
+        const response = await userController.getRoles();
+        const data = await response.json();
+        if (data.success) {
+          setRoles(data.roles);
+        }
       } catch (err) {
         setError('Error loading roles');
-        console.error('Load roles error:', err);
       }
   };
 
@@ -125,13 +95,15 @@ export default function UserAdminDashboard() {
       return;
     }
     try {
-      // NEW MODULAR APPROACH
-      const response = await viewUserController.searchUsers(searchQuery);
-      const users = await viewUserController.parseUserListResponse(response);
-      setUsers(users);
+      const response = await userController.searchUsers(searchQuery);
+      const data = await response.json();
+      if (data.success) {
+        setUsers(data.users);
+      } else {
+        setError(data.message);
+      }
     } catch (err) {
       setError('Search failed');
-      console.error('Search error:', err);
     }
   };
 
@@ -141,17 +113,8 @@ export default function UserAdminDashboard() {
     setError('');
     setCreateError('');
     setSuccess('');
-    
-    // NEW MODULAR APPROACH - Validate before creating
-    const validation = createUserController.validateUserData(formData);
-    if (!validation.valid) {
-      setCreateError(validation.errors.join(', '));
-      setLoading(false);
-      return;
-    }
-    
     try {
-      const response = await createUserController.createUser(formData);
+      const response = await userController.createUser(formData);
       const data = await response.json();
       if (response.ok && data.success) {
         setSuccess('User created successfully');
@@ -159,11 +122,11 @@ export default function UserAdminDashboard() {
         loadUsers();
         resetForm();
       } else {
+        // Prefer showing error within the modal
         setCreateError(data.detail || data.message || 'Failed to create user');
       }
     } catch (err) {
       setCreateError('Error creating user');
-      console.error('Create user error:', err);
     } finally {
       setLoading(false);
     }
@@ -174,24 +137,13 @@ export default function UserAdminDashboard() {
     setLoading(true);
     setError('');
     setSuccess('');
-    
-    const updateData = {
-      full_name: formData.full_name,
-      email: formData.email,
-      role_id: formData.role_id ? parseInt(formData.role_id) : null,
-      is_active: formData.is_active
-    };
-    
-    // NEW MODULAR APPROACH - Validate before updating
-    const validation = updateUserController.validateUpdateData(updateData);
-    if (!validation.valid) {
-      setError(validation.errors.join(', '));
-      setLoading(false);
-      return;
-    }
-    
     try {
-      const response = await updateUserController.updateUser(selectedUser.id, updateData);
+      const response = await userController.updateUser(selectedUser.id, {
+        full_name: formData.full_name,
+        email: formData.email,
+        role_id: formData.role_id ? parseInt(formData.role_id) : null,
+        is_active: formData.is_active
+      });
       const data = await response.json();
       if (data.success) {
         setSuccess('User updated successfully');
@@ -203,7 +155,6 @@ export default function UserAdminDashboard() {
       }
     } catch (err) {
       setError('Error updating user');
-      console.error('Update user error:', err);
     } finally {
       setLoading(false);
     }
@@ -214,21 +165,18 @@ export default function UserAdminDashboard() {
     setError('');
     setSuccess('');
     try {
-      // NEW MODULAR APPROACH
-      const response = await deleteUserController.deleteUser(selectedUser.id);
-      const result = await deleteUserController.parseDeleteResponse(response);
-      
-      if (result.success) {
-        setSuccess(result.message);
+      const response = await userController.deleteUser(selectedUser.id);
+      const data = await response.json();
+      if (data.success) {
+        setSuccess('User suspended successfully');
         setShowDeleteConfirm(false);
         loadUsers();
         setSelectedUser(null);
       } else {
-        setError('Failed to suspend user');
+        setError(data.message || 'Failed to suspend user');
       }
     } catch (err) {
-      setError(err.message || 'Error suspending user');
-      console.error('Delete user error:', err);
+      setError('Error suspending user');
     } finally {
       setLoading(false);
     }
@@ -267,8 +215,8 @@ export default function UserAdminDashboard() {
   };
 
   const confirmLogout = () => {
-    // NEW MODULAR APPROACH
-    logoutController.logoutAndRedirect(router);
+    authController.logout();
+    router.push('/');
   };
 
   const cancelLogout = () => {
@@ -569,6 +517,14 @@ export default function UserAdminDashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Update User: {selectedUser.username}</h3>
+            
+            {/* Error message inside modal */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {error}
+              </div>
+            )}
+            
             <form onSubmit={handleUpdateUser} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>

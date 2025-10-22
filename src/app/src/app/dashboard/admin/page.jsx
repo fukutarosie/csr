@@ -517,14 +517,6 @@ export default function UserAdminDashboard() {
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-8 max-w-md w-full">
             <h3 className="text-xl font-bold text-gray-800 mb-4">Update User: {selectedUser.username}</h3>
-            
-            {/* Error message inside modal */}
-            {error && (
-              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
-                {error}
-              </div>
-            )}
-            
             <form onSubmit={handleUpdateUser} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>

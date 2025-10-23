@@ -21,7 +21,11 @@
 import { tokenController } from './tokenController';
 import { sessionController } from './sessionController';
 
-const API_BASE_URL = 'http://localhost:8000';
+// Get API URL from environment variables with fallback
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+
+// Log the API URL being used (helpful for debugging)
+console.log('API Base URL:', API_BASE_URL);
 
 class LoginController {
   /**

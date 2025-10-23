@@ -18,10 +18,13 @@ from controller.user_account_controller import (
 )
 from supabase import create_client
 import os
+import sys
 from dotenv import load_dotenv
+from config import load_config
 
+# Load environment variables and configuration
 load_dotenv()
-
+config = load_config()
 
 # Initialize CRUD controllers
 supabase_client = create_client(os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY"))
@@ -54,10 +57,7 @@ def require_role(required_role: str):
 # CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "http://localhost:3001",
-    ],  # Next.js frontend (dev ports)
+    allow_origins=config['CORS_ORIGINS'],  # Dynamically configured origins
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -391,8 +391,39 @@ async def get_all_roles(_claims = Depends(require_role("USER_ADMIN"))):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+# DEV-ONLY: Update user without authentication (for local testing)
+@app.put("/api/dev/update_user/{user_id}")
+async def dev_update_user(user_id: int, request: UpdateUserRequest):
+    """Development-only endpoint: update user without auth to assist debugging."""
+    try:
+        result = await update_user_controller.update_user(
+            user_id=user_id,
+            full_name=request.full_name,
+            email=request.email,
+            role_id=request.role_id,
+            is_active=request.is_active
+        )
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+async def run_server():
+    import uvicorn
+    config = uvicorn.Config(app, host="0.0.0.0", port=8000, reload=False)
+    server = uvicorn.Server(config)
+    await server.serve()
+
 
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    import asyncio
+    # Ensure Windows selector event loop
+    if sys.platform == 'win32':
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        loop.run_until_complete(run_server())
+    finally:
+        loop.close()
 

@@ -1,0 +1,12 @@
+{
+    "development": {
+        "frontendPorts": [3000, 3001, 3002, 3003, 3004, 3005],
+        "backendPort": 8000,
+        "backendHost": "localhost"
+    },
+    "production": {
+        "frontendPorts": [3000],
+        "backendPort": 8000,
+        "backendHost": "localhost"
+    }
+}

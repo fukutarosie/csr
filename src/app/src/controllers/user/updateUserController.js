@@ -87,8 +87,11 @@ class UpdateUserController {
       errors.push('Invalid email format');
     }
 
-    if (userData.role_id !== undefined && (!Number.isInteger(userData.role_id) || userData.role_id < 1)) {
-      errors.push('Invalid role ID');
+    // Only validate role_id when it is explicitly provided (not null/undefined)
+    if (userData.role_id != null) {
+      if (!Number.isInteger(userData.role_id) || userData.role_id < 1) {
+        errors.push('Invalid role ID');
+      }
     }
 
     return {

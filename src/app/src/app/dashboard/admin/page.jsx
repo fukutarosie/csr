@@ -13,7 +13,7 @@
  * Dependencies:
  * - Control: sessionController, logoutController (authentication)
  * - Control: viewUserController, createUserController, updateUserController, deleteUserController (user management)
- * - Control: roleController (role management)
+ * - Control: userProfileController (role management)
  * 
  * BCE Flow:
  * User Action → Dashboard (Boundary) → Specific Controller (Control) → Backend API
@@ -23,16 +23,15 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-
-// NEW MODULAR CONTROLLERS (Recommended)
 import { sessionController, logoutController } from '@/controllers/auth';
 import { 
   viewUserController, 
   createUserController,
   updateUserController,
-  deleteUserController,
-  roleController 
+  deleteUserController
 } from '@/controllers/user';
+import { getBackendRoles } from '@/controllers/auth/roleConstants';
+import userProfileController from '@/controllers/userProfile/userProfileController';
 
 export default function UserAdminDashboard() {
   const [user, setUser] = useState(null);
@@ -64,35 +63,49 @@ export default function UserAdminDashboard() {
     is_active: true
   });
 
-  // Profile Form State
-  const [profileData, setProfileData] = useState({
-    full_name: '',
-    email: ''
+  // Role Management State
+  const [roleSearchQuery, setRoleSearchQuery] = useState('');
+  const [showCreateRoleModal, setShowCreateRoleModal] = useState(false);
+  const [showEditRoleModal, setShowEditRoleModal] = useState(false);
+  const [showDeleteRoleConfirm, setShowDeleteRoleConfirm] = useState(false);
+  const [selectedRole, setSelectedRole] = useState(null);
+  const [createRoleError, setCreateRoleError] = useState('');
+  
+  // Role Form State
+  const [roleFormData, setRoleFormData] = useState({
+    role_name: '',
+    role_code: '',
+    description: '',
+    dashboard_route: ''
   });
 
   useEffect(() => {
-    // NEW MODULAR APPROACH
-    if (!sessionController.isAuthenticated()) {
-      router.push('/');
-      return;
-    }
+    const initializeDashboard = async () => {
+      if (!sessionController.isAuthenticated()) {
+        router.push('/');
+        return;
+      }
 
-    const currentUser = sessionController.getCurrentUser();
-    
-    if (currentUser.role_code !== 'USER_ADMIN') {
-      router.push(currentUser.dashboard_route || '/');
-      return;
-    }
+      const currentUser = sessionController.getCurrentUser();
+      
+      if (currentUser.role_code !== 'USER_ADMIN') {
+        router.push(currentUser.dashboard_route || '/');
+        return;
+      }
 
-    setUser(currentUser);
-    loadUsers();
-    loadRoles();
-    
-    // Initialize profile data
-    setProfileData({
-      full_name: currentUser.full_name,
-      email: currentUser.email || ''
-    });
+      setUser(currentUser);
+      
+      try {
+        // Load roles first
+        await loadRoles();
+        // Then load users once roles are available
+        await loadUsers();
+      } catch (err) {
+        console.error('Dashboard initialization error:', err);
+      }
+    };
+
+    initializeDashboard();
   }, [router]);
 
   const loadUsers = async () => {
@@ -109,13 +122,26 @@ export default function UserAdminDashboard() {
 
   const loadRoles = async () => {
       try {
-        // NEW MODULAR APPROACH
-        const response = await roleController.getAllRoles();
-        const roles = await roleController.parseRolesResponse(response);
-        setRoles(roles);
+        // Load roles from role management API for comprehensive role data
+        const response = await userProfileController.getAllRoles();
+        const rolesData = await userProfileController.parseRolesResponse(response);
+        
+        if (rolesData.length > 0) {
+          setRoles(rolesData);
+        } else {
+          // Fallback to role constants if API fails
+          const roles = await getBackendRoles();
+          setRoles(roles);
+        }
       } catch (err) {
-        setError('Error loading roles');
-        console.error('Load roles error:', err);
+        // Fallback to role constants on error
+        try {
+          const roles = await getBackendRoles();
+          setRoles(roles);
+        } catch (fallbackErr) {
+          setError('Error loading roles');
+          console.error('Load roles error:', err, fallbackErr);
+        }
       }
   };
 
@@ -275,6 +301,163 @@ export default function UserAdminDashboard() {
     setShowLogoutConfirm(false);
   };
 
+  // Role Management Functions
+  const handleRoleSearch = () => {
+    if (!roleSearchQuery.trim()) {
+      // Show all roles
+      return roles;
+    }
+    // Filter roles based on search query
+    return roles.filter(role => 
+      role.role_name.toLowerCase().includes(roleSearchQuery.toLowerCase()) ||
+      role.role_code.toLowerCase().includes(roleSearchQuery.toLowerCase())
+    );
+  };
+
+  const handleCreateRole = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setCreateRoleError('');
+    setSuccess('');
+    
+    // Validation
+    const validation = userProfileController.validateRoleData(roleFormData);
+    if (!validation.valid) {
+      setCreateRoleError(validation.errors.join(', '));
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      const response = await userProfileController.createRole(roleFormData);
+      const result = await userProfileController.parseRoleResponse(response);
+      
+      if (result.success) {
+        setSuccess(result.message || 'Role created successfully');
+        setShowCreateRoleModal(false);
+        await loadRoles();
+        resetRoleForm();
+      } else {
+        setCreateRoleError(result.message || 'Error creating role');
+      }
+    } catch (err) {
+      setCreateRoleError('Error creating role');
+      console.error('Create role error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleUpdateRole = async (e) => {
+    e.preventDefault();
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    
+    console.log('=== UPDATE ROLE ===');
+    console.log('Selected Role:', selectedRole);
+    console.log('Form Data:', roleFormData);
+    
+    // Validation
+    const validation = userProfileController.validateUpdateData(roleFormData);
+    console.log('Validation Result:', validation);
+    
+    if (!validation.valid) {
+      setError(validation.errors.join(', '));
+      setLoading(false);
+      return;
+    }
+    
+    try {
+      const result = await userProfileController.updateRole(selectedRole.id, roleFormData);
+      console.log('Update Response:', result);
+      
+      if (result.success) {
+        setSuccess(result.message || 'Role updated successfully');
+        setShowEditRoleModal(false);
+        await loadRoles();
+        resetRoleForm();
+      } else {
+        setError(result.message || 'Error updating role');
+      }
+    } catch (err) {
+      setError(err.message || 'Error updating role');
+      console.error('Update role error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteRole = async () => {
+    if (!selectedRole) {
+      setError('No role selected');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    setSuccess('');
+    
+    console.log('Attempting to delete role:', selectedRole);
+    
+    try {
+      const response = await userProfileController.deleteRole(selectedRole.id);
+      console.log('Delete role response:', response);
+      
+      const result = await userProfileController.parseRoleResponse(response);
+      console.log('Parsed delete result:', result);
+      
+      if (result.success) {
+        const message = result.deleted_users 
+          ? `Role and ${result.deleted_users} associated user(s) deleted successfully.`
+          : result.message || 'Role deleted successfully';
+        
+        setSuccess(message);
+        setShowDeleteRoleConfirm(false);
+        await loadRoles();
+        await loadUsers(); // Reload users to reflect deleted accounts
+        setSelectedRole(null);
+      } else {
+        setError(result.message || 'Error deleting role');
+      }
+    } catch (err) {
+      setError(err.message || 'Error deleting role');
+      console.error('Delete role error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const openEditRoleModal = (role) => {
+    setSelectedRole(role);
+    setRoleFormData({
+      role_name: role.role_name,
+      role_code: role.role_code,
+      description: role.description || '',
+      dashboard_route: role.dashboard_route,
+      is_active: role.is_active !== undefined ? role.is_active : true
+    });
+    setShowEditRoleModal(true);
+  };
+
+  const openDeleteRoleConfirm = (role) => {
+    setSelectedRole(role);
+    setShowDeleteRoleConfirm(true);
+  };
+
+  const resetRoleForm = () => {
+    setRoleFormData({
+      role_name: '',
+      role_code: '',
+      description: '',
+      dashboard_route: ''
+    });
+    setSelectedRole(null);
+  };
+
+  const filteredRoles = handleRoleSearch();
+
   if (!user) {
     return null;
   }
@@ -309,7 +492,7 @@ export default function UserAdminDashboard() {
         </div>
 
         {/* Alert Messages */}
-        {error && (
+        {error && error !== 'Error loading roles' && (
           <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
             {error}
           </div>
@@ -334,6 +517,7 @@ export default function UserAdminDashboard() {
               >
                 Manage User Accounts
               </button>
+
               <button
                 onClick={() => setActiveTab('manage-profile')}
                 className={`px-6 py-4 text-sm font-medium border-b-2 transition ${
@@ -342,7 +526,7 @@ export default function UserAdminDashboard() {
                     : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                 }`}
               >
-                Manage User Profile
+                Manage Roles
               </button>
             </nav>
           </div>
@@ -430,47 +614,78 @@ export default function UserAdminDashboard() {
 
             {activeTab === 'manage-profile' && (
               <div>
-                <h3 className="text-lg font-semibold text-gray-800 mb-4">My Profile</h3>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Username</label>
+                {/* Search and Create Role */}
+                <div className="flex gap-4 mb-6">
+                  <div className="flex-1 flex gap-2">
                     <input
                       type="text"
-                      value={user.username}
-                      disabled
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
+                      placeholder="Search by role name or code..."
+                      value={roleSearchQuery}
+                      onChange={(e) => setRoleSearchQuery(e.target.value)}
+                      className="flex-1 px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-gray-900"
                     />
+                    <button
+                      onClick={() => setRoleSearchQuery(roleSearchQuery)}
+                      className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition"
+                    >
+                      Search
+                    </button>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Full Name</label>
-                    <input
-                      type="text"
-                      value={profileData.full_name}
-                      onChange={(e) => setProfileData({ ...profileData, full_name: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                    <input
-                      type="email"
-                      value={profileData.email}
-                      onChange={(e) => setProfileData({ ...profileData, email: e.target.value })}
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Role</label>
-                    <input
-                      type="text"
-                      value={user.role_name}
-                      disabled
-                      className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-100 text-gray-900"
-                    />
-                  </div>
-                  <button className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition">
-                    Save Changes
+                  <button
+                    onClick={() => setShowCreateRoleModal(true)}
+                    className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition"
+                  >
+                    + Create Role
                   </button>
+                </div>
+
+                {/* Roles Table */}
+                <div className="overflow-x-auto">
+                  <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">ID</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role Name</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Role Code</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Dashboard Route</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                      {filteredRoles.map((role) => (
+                        <tr key={role.id} className="hover:bg-gray-50">
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{role.id}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">{role.role_name}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">{role.role_code}</td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">{role.dashboard_route}</td>
+                          <td className="px-6 py-4 text-sm text-gray-500 max-w-xs truncate">{role.description || '-'}</td>
+                          <td className="px-6 py-4 whitespace-nowrap">
+                            <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              role.is_active !== false ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                            }`}>
+                              {role.is_active !== false ? 'Active' : 'Suspended'}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                            <button
+                              onClick={() => openEditRoleModal(role)}
+                              className="text-indigo-600 hover:text-indigo-900 mr-4"
+                            >
+                              Update
+                            </button>
+                            <button
+                              onClick={() => openDeleteRoleConfirm(role)}
+                              className="text-red-600 hover:text-red-900"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
@@ -673,6 +888,201 @@ export default function UserAdminDashboard() {
               <button
                 onClick={cancelLogout}
                 className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Role Modal */}
+      {showCreateRoleModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Create New Role</h3>
+            {createRoleError && (
+              <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg mb-4">
+                {createRoleError}
+              </div>
+            )}
+            <form onSubmit={handleCreateRole} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role Name</label>
+                <input
+                  type="text"
+                  value={roleFormData.role_name}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, role_name: e.target.value })}
+                  required
+                  placeholder="e.g., User Admin"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role Code</label>
+                <input
+                  type="text"
+                  value={roleFormData.role_code}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, role_code: e.target.value })}
+                  required
+                  placeholder="e.g., USER_ADMIN"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Dashboard Route</label>
+                <input
+                  type="text"
+                  value={roleFormData.dashboard_route}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, dashboard_route: e.target.value })}
+                  required
+                  placeholder="e.g., /dashboard/admin"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea
+                  value={roleFormData.description}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, description: e.target.value })}
+                  rows="3"
+                  placeholder="Role description..."
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50"
+                >
+                  {loading ? 'Creating...' : 'Create'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowCreateRoleModal(false); resetRoleForm(); }}
+                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Edit Role Modal */}
+      {showEditRoleModal && selectedRole && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-gray-800 mb-4">Update Role: {selectedRole.role_name}</h3>
+            <form onSubmit={handleUpdateRole} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role Name</label>
+                <input
+                  type="text"
+                  value={roleFormData.role_name}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, role_name: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Role Code</label>
+                <input
+                  type="text"
+                  value={roleFormData.role_code}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, role_code: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Dashboard Route</label>
+                <input
+                  type="text"
+                  value={roleFormData.dashboard_route}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, dashboard_route: e.target.value })}
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Description</label>
+                <textarea
+                  value={roleFormData.description}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, description: e.target.value })}
+                  rows="3"
+                  className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 text-gray-900"
+                />
+              </div>
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  checked={roleFormData.is_active}
+                  onChange={(e) => setRoleFormData({ ...roleFormData, is_active: e.target.checked })}
+                  className="mr-2"
+                />
+                <label className="text-sm font-medium text-gray-700">Active</label>
+              </div>
+              <div className="flex gap-4 pt-4">
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition disabled:opacity-50"
+                >
+                  {loading ? 'Updating...' : 'Update'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setShowEditRoleModal(false); resetRoleForm(); }}
+                  className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 rounded-lg transition"
+                >
+                  Cancel
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Role Confirmation Modal */}
+      {showDeleteRoleConfirm && selectedRole && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-8 max-w-md w-full">
+            <h3 className="text-xl font-bold text-red-600 mb-4">⚠️ WARNING: Cascading Delete</h3>
+            <div className="mb-6 space-y-3">
+              <p className="text-gray-800 font-semibold">
+                You are about to <strong className="text-red-600">permanently delete</strong> the role:
+              </p>
+              <p className="text-lg font-bold text-indigo-600 pl-4">
+                "{selectedRole.role_name}"
+              </p>
+              <div className="bg-red-50 border-l-4 border-red-600 p-4 mt-4">
+                <p className="text-red-800 font-semibold mb-2">
+                  ⚠️ ALL USER ACCOUNTS WITH THIS ROLE WILL ALSO BE DELETED!
+                </p>
+                <p className="text-red-700 text-sm">
+                  This action is <strong>IRREVERSIBLE</strong> and will permanently remove:
+                </p>
+                <ul className="list-disc list-inside text-red-700 text-sm mt-2 pl-2">
+                  <li>The role from the system</li>
+                  <li>All user accounts assigned to this role</li>
+                  <li>All data associated with these users</li>
+                </ul>
+              </div>
+              <p className="text-gray-600 text-sm mt-4">
+                Are you absolutely sure you want to proceed?
+              </p>
+            </div>
+            <div className="flex gap-4">
+              <button
+                onClick={handleDeleteRole}
+                disabled={loading}
+                className="flex-1 px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-bold rounded-lg transition disabled:opacity-50"
+              >
+                {loading ? 'Deleting...' : 'Yes, Delete Everything'}
+              </button>
+              <button
+                onClick={() => { setShowDeleteRoleConfirm(false); setSelectedRole(null); }}
+                className="flex-1 px-4 py-2 bg-gray-300 hover:bg-gray-400 text-gray-800 font-semibold rounded-lg transition"
               >
                 Cancel
               </button>

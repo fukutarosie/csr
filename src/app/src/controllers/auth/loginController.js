@@ -21,11 +21,10 @@
 import { tokenController } from './tokenController';
 import { sessionController } from './sessionController';
 
-// Get API URL from environment variables with fallback
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8000';
+import { API_CONFIG, getApiUrl } from '@/config/api';
 
 // Log the API URL being used (helpful for debugging)
-console.log('API Base URL:', API_BASE_URL);
+console.log('API Base URL:', API_CONFIG.BASE_URL);
 
 class LoginController {
   /**
@@ -36,7 +35,7 @@ class LoginController {
   async login(credentials) {
     try {
       // Send login request to backend
-      const response = await fetch(`${API_BASE_URL}/api/login`, {
+      const response = await fetch(getApiUrl(API_CONFIG.ENDPOINTS.LOGIN), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),

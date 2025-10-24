@@ -15,6 +15,7 @@
  * 
  * Dependencies:
  * - Control: loginController
+ * - Control: roleConstants
  */
 
 'use client';
@@ -24,6 +25,7 @@ import { useRouter } from 'next/navigation';
 
 // NEW MODULAR APPROACH (Recommended)
 import { loginController } from '@/controllers/auth';
+import { getRolesList } from '@/controllers/auth/roleConstants';
 
 // OLD APPROACH (Still works for backward compatibility)
 // import { authController } from '@/controllers/authController';
@@ -31,22 +33,20 @@ import { loginController } from '@/controllers/auth';
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [role, setRole] = useState('USER_ADMIN');
+  const [role, setRole] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   const router = useRouter();
+  const roles = getRolesList();
 
   useEffect(() => {
     setMounted(true);
+    // Set default role from control layer
+    if (roles.length > 0) {
+      setRole(roles[0].value);
+    }
   }, []);
-
-  const roles = [
-    { label: 'User Admin', value: 'USER_ADMIN' },
-    { label: 'PIN', value: 'PIN' },
-    { label: 'CSR Rep', value: 'CSR_REP' },
-    { label: 'Platform Management', value: 'PLATFORM_MGMT' },
-  ];
 
   const handleLogin = async (e) => {
     e.preventDefault();

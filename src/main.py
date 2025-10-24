@@ -16,6 +16,7 @@ from controller.user_account_controller import (
     UpdateUserAccountController,
     SuspendUserAccountController
 )
+from controller.user_profile_controller import UserProfileController
 from supabase import create_client
 import os
 import sys
@@ -32,6 +33,7 @@ create_user_controller = CreateUserAccountController(supabase_client)
 view_user_controller = ViewUserAccountController(supabase_client)
 update_user_controller = UpdateUserAccountController(supabase_client)
 suspend_user_controller = SuspendUserAccountController(supabase_client)
+user_profile_controller = UserProfileController(supabase_client)
 
 app = FastAPI(title="Auth API", version="1.0.0")
 security_scheme = HTTPBearer()
@@ -109,6 +111,22 @@ class UpdateUserRequest(BaseModel):
 class SearchRequest(BaseModel):
     """Search request model"""
     query: str
+
+
+class CreateRoleRequest(BaseModel):
+    """Create role request model"""
+    role_name: str
+    role_code: str
+    dashboard_route: str
+    description: Optional[str] = None
+
+
+class UpdateRoleRequest(BaseModel):
+    """Update role request model"""
+    role_name: Optional[str] = None
+    role_code: Optional[str] = None
+    dashboard_route: Optional[str] = None
+    description: Optional[str] = None
 
 
 @app.get("/")
@@ -383,7 +401,170 @@ async def get_all_roles(_claims = Depends(require_role("USER_ADMIN"))):
         List of roles
     """
     try:
-        roles = await view_user_controller.get_all_roles()
+        roles = user_profile_controller.get_all_roles()
+        return {
+            "success": True,
+            "roles": roles
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+# ========================================
+# ROLE MANAGEMENT ENDPOINTS
+# ========================================
+
+@app.get("/api/roles/{role_id}")
+async def get_role_by_id(role_id: int, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Get role by ID
+    
+    Args:
+        role_id: Role ID
+    
+    Returns:
+        Role data
+    """
+    try:
+        role = user_profile_controller.get_role_by_id(role_id)
+        if not role:
+            raise HTTPException(status_code=404, detail="Role not found")
+        return {
+            "success": True,
+            "role": role
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/roles")
+async def create_role(request: CreateRoleRequest, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Create a new role
+    
+    Args:
+        request: Role creation data
+    
+    Returns:
+        Created role data
+    """
+    try:
+        result = user_profile_controller.create_role(
+            role_name=request.role_name,
+            role_code=request.role_code,
+            dashboard_route=request.dashboard_route,
+            description=request.description
+        )
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/roles/{role_id}")
+async def update_role(role_id: int, request: UpdateRoleRequest, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Update role information
+    
+    Args:
+        role_id: Role ID to update
+        request: Update data
+    
+    Returns:
+        Update result
+    """
+    try:
+        result = user_profile_controller.update_role(
+            role_id=role_id,
+            role_name=request.role_name,
+            role_code=request.role_code,
+            dashboard_route=request.dashboard_route,
+            description=request.description
+        )
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.put("/api/roles/{role_id}/toggle-status")
+async def toggle_role_status(role_id: int, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Toggle role active status (suspend/activate)
+    
+    Args:
+        role_id: Role ID to toggle
+    
+    Returns:
+        Toggle result
+    """
+    try:
+        result = user_profile_controller.toggle_role_status(role_id)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+        
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.delete("/api/roles/{role_id}")
+async def delete_role(role_id: int, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Delete a role (hard delete - use with caution)
+    WARNING: This will cascade delete all users with this role!
+    
+    Args:
+        role_id: Role ID to delete
+    
+    Returns:
+        Delete result with success status, message, and deleted_users count
+    """
+    try:
+        result = user_profile_controller.delete_role(role_id, cascade=True)
+        
+        if not result['success']:
+            raise HTTPException(status_code=400, detail=result['message'])
+        
+        return {
+            'success': result['success'],
+            'message': result['message'],
+            'deleted_users': result.get('deleted_users', 0)
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/roles/search")
+async def search_roles(request: SearchRequest, _claims = Depends(require_role("USER_ADMIN"))):
+    """
+    Search roles by name or code
+    
+    Args:
+        request: Search query
+    
+    Returns:
+        List of matching roles
+    """
+    try:
+        roles = user_profile_controller.search_roles(request.query)
         return {
             "success": True,
             "roles": roles

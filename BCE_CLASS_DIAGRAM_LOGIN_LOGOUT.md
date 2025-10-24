@@ -1,438 +1,354 @@
-# BCE Class Diagram - User Admin Login & Logout
 
-> **Last Updated**: December 2024  
-> **Controllers**: `login_controller.py`, `logout_controller.py`  
-> **Architecture**: BCE Pattern with separate controllers per use case
+# BCE Class Diagram & Sequence Diagrams (Updated)
 
-## Overview
-This document describes the BCE (Boundary-Control-Entity) architecture for User Admin authentication (login and logout functionality).
+This document contains the updated BCE Class Diagram and the sequence diagrams for the main user functions implemented in the codebase.
 
-The authentication system follows the BCE pattern with dedicated controllers:
-- **LoginController** (`src/controller/login_controller.py`): Handles login use case with JWT token generation
-- **LogoutController** (`src/controller/logout_controller.py`): Handles logout use case (client-side token removal)
+## BCE Class Diagram (Mermaid)
 
----
+```mermaid
+classDiagram
+    %% Boundary Layer
+    class LoginPage {
+      <<Boundary>>
+      +string username
+      +string password
+      +string role
+      +bool loading
+      +string error
+      +handleLogin()
+    }
 
-## Class Diagram
+    class UserAdminDashboard {
+      <<Boundary>>
+      +User user
+      +displayUserTable()
+      +openEditModal(userId)
+      +openCreateModal()
+    }
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              BOUNDARY LAYER (Frontend)                               │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+    %% Control Layer (Frontend Controllers)
+    class AuthControllerFrontend {
+      <<Control>>
+      +login(credentials)
+      +logout()
+      +isAuthenticated()
+      +getCurrentUser()
+    }
 
-┌──────────────────────────────────┐         ┌──────────────────────────────────┐
-│   <<Boundary>>                   │         │   <<Boundary>>                   │
-│   LoginPage                      │         │   UserAdminDashboard             │
-├──────────────────────────────────┤         ├──────────────────────────────────┤
-│ - username: string               │         │ - user: User                     │
-│ - password: string               │         │ - showLogoutConfirm: boolean     │
-│ - role: string                   │         ├──────────────────────────────────┤
-│ - error: string                  │         │ + handleLogoutClick()            │
-│ - loading: boolean               │         │ + confirmLogout()                │
-│ - mounted: boolean               │         │ + cancelLogout()                 │
-├──────────────────────────────────┤         │ + render()                       │
-│ + handleLogin(e: Event)          │         └──────────────────────────────────┘
-│ + setUsername(value: string)     │                       │
-│ + setPassword(value: string)     │                       │ uses
-│ + setRole(value: string)         │                       ▼
-│ + render()                       │         ┌──────────────────────────────────┐
-└──────────────────────────────────┘         │   <<Controller>>                 │
-              │                              │   AuthController (Frontend)      │
-              │ uses                         ├──────────────────────────────────┤
-              ▼                              │ - USER_STORAGE_KEY: string       │
-┌──────────────────────────────────┐         │ - API_BASE_URL: string           │
-│   <<Controller>>                 │         ├──────────────────────────────────┤
-│   AuthController (Frontend)      │         │ + login(credentials)             │
-├──────────────────────────────────┤         │ + logout()                       │
-│ - USER_STORAGE_KEY: string       │         │ + isAuthenticated(): boolean     │
-│ - API_BASE_URL: string           │         │ + getCurrentUser(): User         │
-├──────────────────────────────────┤         │ + setUser(user: User)            │
-│ + login(credentials)             │         │ + getUserDashboardRoute()        │
-│ + logout()                       │         │ + getUserRole(): string          │
-│ + isAuthenticated(): boolean     │         │ + verifySession(): boolean       │
-│ + getCurrentUser(): User         │         └──────────────────────────────────┘
-│ + setUser(user: User)            │
-│ + getUserDashboardRoute()        │
-│ + getUserRole(): string          │
-│ + verifySession(): boolean       │
-└──────────────────────────────────┘
-              │
-              │ HTTP POST/GET
-              ▼
+    class CreateUserControllerFrontend {
+      <<Control>>
+      +createUser(userData)
+    }
 
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                              CONTROL LAYER (Backend)                                 │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+    class ViewUserControllerFrontend {
+      <<Control>>
+      +getAllUsers()
+      +getUserById(id)
+      +searchUsers(query)
+    }
 
-┌──────────────────────────────────────────┐
-│   <<API Endpoint>>                       │
-│   FastAPI Main Application               │
-├──────────────────────────────────────────┤
-│ + POST /api/login                        │
-│ + GET /api/verify/{user_id}              │
-├──────────────────────────────────────────┤
-│ + login(request: LoginRequest)           │
-│ + verify_user(user_id: int)              │
-└──────────────────────────────────────────┘
-              │
-              │ calls
-              ▼
-┌──────────────────────────────────────────┐
-│   <<Controller>>                         │
-│   LoginController                        │
-├──────────────────────────────────────────┤
-│ - supabase: Client                       │
-│ - SECRET_KEY: string                     │
-│ - ALGORITHM: string                      │
-├──────────────────────────────────────────┤
-│ + __init__(supabase_client)              │
-│ + hash_password(password: str): str      │
-│ + verify_password(plain, hashed): bool   │
-│ + create_access_token(data: dict): str   │
-│ + login(username, password): AuthResponse│
-└──────────────────────────────────────────┘
+    class UpdateUserControllerFrontend {
+      <<Control>>
+      +updateUser(id, data)
+    }
 
-┌──────────────────────────────────────────┐
-│   <<Controller>>                         │
-│   LogoutController                       │
-├──────────────────────────────────────────┤
-│ + logout(): dict                         │
-│ + logout_with_token_invalidation(): dict │
-└──────────────────────────────────────────┘
-              │
-              │ uses/creates
-              ▼
+    class SuspendUserControllerFrontend {
+      <<Control>>
+      +toggleUserStatus(id)
+    }
 
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                  ENTITY LAYER                                        │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+    %% Control Layer (Backend Controllers)
+    class AuthControllerBackend {
+      <<Control>>
+      +login(username, password)
+      +verify_user(id)
+    }
 
-┌──────────────────────────────────────────┐       ┌──────────────────────────────────┐
-│   <<Entity>>                             │       │   <<Entity>>                     │
-│   User                                   │       │   AuthResponse                   │
-├──────────────────────────────────────────┤       ├──────────────────────────────────┤
-│ - id: int                                │       │ - success: bool                  │
-│ - username: string                       │◄──────┤ - message: string                │
-│ - full_name: string                      │ has   │ - user: User                     │
-│ - email: string                          │       └──────────────────────────────────┘
-│ - role_id: int                           │
-│ - role_name: string                      │       ┌──────────────────────────────────┐
-│ - role_code: string                      │       │   <<Entity>>                     │
-│ - dashboard_route: string                │       │   Role                           │
-│ - is_active: bool                        │       ├──────────────────────────────────┤
-│ - last_login: datetime                   │       │ - id: int                        │
-├──────────────────────────────────────────┤       │ - role_name: string              │
-│ + from_db(data: dict): User              │       │ - role_code: string              │
-│ + to_dict(): dict                        │       │ - description: string            │
-└──────────────────────────────────────────┘       │ - dashboard_route: string        │
-              │                                     │ - created_at: datetime           │
-              │ queries                             └──────────────────────────────────┘
-              ▼
+    class CreateUserControllerBackend {
+      <<Control>>
+      +create_user(...)
+    }
 
-┌─────────────────────────────────────────────────────────────────────────────────────┐
-│                                  DATABASE LAYER                                      │
-└─────────────────────────────────────────────────────────────────────────────────────┘
+    class ViewUserControllerBackend {
+      <<Control>>
+      +get_all_users()
+      +get_user_by_id(id)
+      +search_users(query)
+    }
 
-┌──────────────────────────────────────────┐       ┌──────────────────────────────────┐
-│   <<Database>>                           │       │   <<Database>>                   │
-│   Supabase Client                        │       │   PostgreSQL                     │
-├──────────────────────────────────────────┤       ├──────────────────────────────────┤
-│ + table(name: string)                    │       │ Tables:                          │
-│ + select(columns: string)                │       │ - users                          │
-│ + insert(data: dict)                     │       │ - roles                          │
-│ + update(data: dict)                     │       │                                  │
-│ + delete()                               │       │ Views:                           │
-│ + eq(column: string, value: any)         │       │ - user_details                   │
-│ + execute()                              │       │   (joins users + roles)          │
-└──────────────────────────────────────────┘       └──────────────────────────────────┘
+    class UpdateUserControllerBackend {
+      <<Control>>
+      +update_user(id, data)
+    }
+
+    class SuspendUserControllerBackend {
+      <<Control>>
+      +toggle_status(id)
+    }
+
+    %% Entity Layer
+    class User {
+      <<Entity>>
+      +int id
+      +string username
+      +string full_name
+      +string email
+      +int role_id
+      +string role_name
+      +bool is_active
+      +to_dict()
+    }
+
+    class Role {
+      <<Entity>>
+      +int id
+      +string role_name
+      +string role_code
+      +to_dict()
+    }
+
+    class AuthResponse {
+      <<Entity>>
+      +bool success
+      +string message
+      +User user
+    }
+
+    %% Relationships
+    LoginPage ..> AuthControllerFrontend : uses
+    UserAdminDashboard ..> ViewUserControllerFrontend : uses
+    UserAdminDashboard ..> CreateUserControllerFrontend : uses
+    UserAdminDashboard ..> UpdateUserControllerFrontend : uses
+    UserAdminDashboard ..> SuspendUserControllerFrontend : uses
+
+    AuthControllerFrontend ..> AuthControllerBackend : calls
+    CreateUserControllerFrontend ..> CreateUserControllerBackend : calls
+    ViewUserControllerFrontend ..> ViewUserControllerBackend : calls
+    UpdateUserControllerFrontend ..> UpdateUserControllerBackend : calls
+    SuspendUserControllerFrontend ..> SuspendUserControllerBackend : calls
+
+    CreateUserControllerBackend ..> User : creates
+    ViewUserControllerBackend ..> User : reads
+    UpdateUserControllerBackend ..> User : updates
+    SuspendUserControllerBackend ..> User : updates
+
+    User --> Role : has
+    AuthControllerBackend ..> AuthResponse : returns
 ```
 
----
+## Sequence Diagrams (Mermaid)
 
-## Sequence Diagram - Login Flow
+### 1) User Login
 
-```
-User        LoginPage      AuthController    FastAPI      AuthController    Database      User
-Browser     (Boundary)     (Frontend)        (API)        (Backend)        (Supabase)   (Entity)
-  │             │              │                │               │               │           │
-  │ Enter       │              │                │               │               │           │
-  │ credentials │              │                │               │               │           │
-  ├────────────►│              │                │               │               │           │
-  │             │              │                │               │               │           │
-  │             │ login()      │                │               │               │           │
-  │             ├─────────────►│                │               │               │           │
-  │             │              │                │               │               │           │
-  │             │              │ POST /api/login│               │               │           │
-  │             │              ├───────────────►│               │               │           │
-  │             │              │                │               │               │           │
-  │             │              │                │ login(user,pw)│               │           │
-  │             │              │                ├──────────────►│               │           │
-  │             │              │                │               │               │           │
-  │             │              │                │               │ SELECT *      │           │
-  │             │              │                │               ├──────────────►│           │
-  │             │              │                │               │               │           │
-  │             │              │                │               │ user_data     │           │
-  │             │              │                │               │◄──────────────┤           │
-  │             │              │                │               │               │           │
-  │             │              │                │               │ Check active  │           │
-  │             │              │                │               │ Verify password│          │
-  │             │              │                │               │               │           │
-  │             │              │                │               │ UPDATE        │           │
-  │             │              │                │               │ last_login    │           │
-  │             │              │                │               ├──────────────►│           │
-  │             │              │                │               │               │           │
-  │             │              │                │               │ from_db()     │           │
-  │             │              │                │               ├──────────────────────────►│
-  │             │              │                │               │               │           │
-  │             │              │                │               │               │  User obj │
-  │             │              │                │               │◄──────────────────────────┤
-  │             │              │                │               │               │           │
-  │             │              │                │ AuthResponse  │               │           │
-  │             │              │                │ (User entity) │               │           │
-  │             │              │                │◄──────────────┤               │           │
-  │             │              │                │               │               │           │
-  │             │              │                │ to_dict()     │               │           │
-  │             │              │                ├──────────────────────────────────────────►│
-  │             │              │                │               │               │           │
-  │             │              │                │               │               │  dict     │
-  │             │              │                │◄──────────────────────────────────────────┤
-  │             │              │                │               │               │           │
-  │             │              │ JSON Response  │               │               │           │
-  │             │              │ {success,user} │               │               │           │
-  │             │              │◄───────────────┤               │               │           │
-  │             │              │                │               │               │           │
-  │             │ response     │                │               │               │           │
-  │             │◄─────────────┤                │               │               │           │
-  │             │              │                │               │               │           │
-  │             │ setUser()    │                │               │               │           │
-  │             │ (localStorage)│               │               │               │           │
-  │             ├─────────────►│                │               │               │           │
-  │             │              │                │               │               │           │
-  │ Redirect to │              │                │               │               │           │
-  │ Dashboard   │              │                │               │               │           │
-  │◄────────────┤              │                │               │               │           │
+```mermaid
+sequenceDiagram
+    actor User
+    participant LoginPage as LoginPage (Boundary)
+    participant AuthFrontend as AuthController (Frontend)
+    participant API as FastAPI
+    participant AuthBackend as AuthController (Backend)
+    participant DB as Supabase
+    participant UserEntity as User (Entity)
+
+    User->>LoginPage: Enter credentials + role
+    LoginPage->>AuthFrontend: login(credentials)
+    AuthFrontend->>API: POST /api/login {username,password}
+    API->>AuthBackend: login(request)
+    AuthBackend->>DB: SELECT user FROM user_details WHERE username = ...
+    DB-->>AuthBackend: user row
+    AuthBackend->>AuthBackend: verify password, check is_active
+    alt success
+      AuthBackend->>DB: UPDATE users SET last_login = now()
+      AuthBackend->>UserEntity: from_db(row)
+      AuthBackend-->>API: AuthResponse(success,user)
+      API-->>AuthFrontend: 200 {success,user}
+      AuthFrontend-->>LoginPage: store user (localStorage)
+      LoginPage-->>User: redirect to dashboard
+    else failure
+      AuthBackend-->>API: AuthResponse(failure,message)
+      API-->>AuthFrontend: 400 {message}
+      AuthFrontend-->>LoginPage: show error
+    end
 ```
 
----
+### 2) User Logout
 
-## Sequence Diagram - Logout Flow
+```mermaid
+sequenceDiagram
+    actor User
+    participant Dashboard as UserAdminDashboard
+    participant AuthFrontend as AuthController (Frontend)
 
-```
-User        Dashboard      AuthController    FastAPI      AuthController    Database
-Browser     (Boundary)     (Frontend)        (API)        (Backend)        (Supabase)
-  │             │              │                │               │               │
-  │ Click       │              │                │               │               │
-  │ Logout      │              │                │               │               │
-  ├────────────►│              │                │               │               │
-  │             │              │                │               │               │
-  │             │ Show         │                │               │               │
-  │             │ Confirmation │                │               │               │
-  │             │ Modal        │                │               │               │
-  │◄────────────┤              │                │               │               │
-  │             │              │                │               │               │
-  │ Confirm     │              │                │               │               │
-  ├────────────►│              │                │               │               │
-  │             │              │                │               │               │
-  │             │ logout()     │                │               │               │
-  │             ├─────────────►│                │               │               │
-  │             │              │                │               │               │
-  │             │              │ Remove from    │               │               │
-  │             │              │ localStorage   │               │               │
-  │             │              │                │               │               │
-  │             │ success      │                │               │               │
-  │             │◄─────────────┤                │               │               │
-  │             │              │                │               │               │
-  │ Redirect to │              │                │               │               │
-  │ Login Page  │              │                │               │               │
-  │◄────────────┤              │                │               │               │
-  │             │              │                │               │               │
-  
-Note: Logout is stateless - no backend call or database update required!
-User session is managed entirely client-side via localStorage.
+    User->>Dashboard: Click Logout
+    Dashboard->>AuthFrontend: logout()
+    AuthFrontend-->>Dashboard: clear storage, redirect to login
 ```
 
----
+### 3) Create User (User Admin)
 
-## Component Responsibilities
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as UserAdminDashboard (Boundary)
+    participant CreateFrontend as CreateUserController (Frontend)
+    participant API as FastAPI
+    participant CreateBackend as CreateUserController (Backend)
+    participant DB as Supabase
+    participant UserEntity as User
 
-### **BOUNDARY LAYER (Frontend - React/Next.js)**
+    Admin->>AdminPage: Click Create -> submit form
+    AdminPage->>CreateFrontend: createUser(formData)
+    CreateFrontend->>API: POST /api/users {formData}
+    API->>CreateBackend: create_user(request)
+    CreateBackend->>DB: Check username/email uniqueness
+    DB-->>CreateBackend: uniqueness result
+    alt unique
+      CreateBackend->>CreateBackend: hash password
+      CreateBackend->>DB: INSERT INTO users (...)
+      DB-->>CreateBackend: new user row
+      CreateBackend->>UserEntity: from_db(row)
+      CreateBackend-->>API: {success,user}
+      API-->>CreateFrontend: 201 {success,user}
+      CreateFrontend-->>AdminPage: success, refresh list
+    else conflict
+      CreateBackend-->>API: {success:false,message}
+      API-->>CreateFrontend: 400 {message}
+      CreateFrontend-->>AdminPage: show error
+    end
+```
 
-#### 1. **LoginPage** (`src/app/src/app/page.jsx`)
-- **Purpose**: User interface for authentication
-- **Attributes**:
-  - `username`: string - stores username input
-  - `password`: string - stores password input
-  - `role`: string - stores selected role (USER_ADMIN, PIN, CSR_REP, PLATFORM_MGMT)
-  - `error`: string - displays error messages
-  - `loading`: boolean - shows loading state
-  - `mounted`: boolean - prevents hydration mismatch
-- **Methods**:
-  - `handleLogin(e)`: Submits credentials to AuthController
-  - `setUsername(value)`: Updates username state
-  - `setPassword(value)`: Updates password state
-  - `setRole(value)`: Updates role selection
-  - `render()`: Renders login form UI
+### 4) View User Account (User Admin)
 
-#### 2. **UserAdminDashboard** (`src/app/src/app/dashboard/admin/page.jsx`)
-- **Purpose**: Main dashboard interface after login
-- **Attributes**:
-  - `user`: User object - current logged-in user
-  - `showLogoutConfirm`: boolean - shows logout confirmation modal
-- **Methods**:
-  - `handleLogoutClick()`: Opens logout confirmation modal
-  - `confirmLogout()`: Calls AuthController.logout() and redirects
-  - `cancelLogout()`: Closes confirmation modal
-  - `render()`: Renders dashboard UI
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as UserAdminDashboard
+    participant ViewFrontend as ViewUserController (Frontend)
+    participant API as FastAPI
+    participant ViewBackend as ViewUserController (Backend)
+    participant DB as Supabase
 
----
+    Admin->>AdminPage: Open user management
+    AdminPage->>ViewFrontend: getAllUsers()
+    ViewFrontend->>API: GET /api/users
+    API->>ViewBackend: get_all_users()
+    ViewBackend->>DB: SELECT * FROM user_details ORDER BY created_at DESC
+    DB-->>ViewBackend: rows
+    ViewBackend-->>API: {success, users}
+    API-->>ViewFrontend: {success, users}
+    ViewFrontend-->>AdminPage: render table
+```
 
-### **CONTROL LAYER**
+### 5) Update User Account (User Admin)
 
-#### 3. **AuthController (Frontend)** (`src/app/src/controllers/authController.js`)
-- **Purpose**: Manages authentication state and API communication (client-side)
-- **Attributes**:
-  - `USER_STORAGE_KEY`: string = "user" - localStorage key
-  - `API_BASE_URL`: string = "http://localhost:8000" - backend URL
-- **Methods**:
-  - `login(credentials)`: Promise<Object> - Authenticates user via backend API
-    - Makes HTTP POST to `/api/login`
-    - Stores user in localStorage on success
-    - Returns `{success: boolean, message: string, user: Object}`
-  - `logout()`: void - Removes user from localStorage
-  - `isAuthenticated()`: boolean - Checks if user data exists in localStorage
-  - `getCurrentUser()`: User|null - Retrieves user from localStorage
-  - `setUser(user)`: void - Stores user in localStorage
-  - `getUserDashboardRoute()`: string|null - Gets user's dashboard route
-  - `getUserRole()`: string|null - Gets user's role code
-  - `verifySession()`: Promise<boolean> - Verifies user exists in database
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as UserAdminDashboard
+    participant UpdateFrontend as UpdateUserController (Frontend)
+    participant API as FastAPI
+    participant UpdateBackend as UpdateUserController (Backend)
+    participant DB as Supabase
 
-#### 4. **FastAPI Main** (`src/main.py`)
-- **Purpose**: HTTP API endpoints
-- **Endpoints**:
-  - `POST /api/login`: Authenticates user
-    - Input: `{username: string, password: string}`
-    - Output: `{success: boolean, message: string, user: Object}`
-  - `GET /api/verify/{user_id}`: Verifies user exists
-    - Output: `{exists: boolean, user_id: int}`
+    Admin->>AdminPage: Click Edit -> open modal
+    AdminPage->>API: GET /api/users/{id} (optional) to prefill
+    API->>UpdateBackend: get_user_by_id(id)
+    UpdateBackend->>DB: SELECT FROM user_details WHERE id = id
+    DB-->>UpdateBackend: row
+    UpdateBackend-->>API: {success,user}
+    API-->>AdminPage: prefill form
 
-#### 5. **LoginController (Backend)** (`src/controller/login_controller.py`)
-- **Purpose**: Backend business logic for user authentication (Login use case)
-- **Attributes**:
-  - `supabase`: Client - Supabase database connection
-  - `SECRET_KEY`: string - JWT secret key
-  - `ALGORITHM`: string - JWT algorithm (HS256)
-- **Methods**:
-  - `__init__(supabase_client)`: Initializes with Supabase client
-  - `hash_password(password: str)`: str - Hashes password with bcrypt
-  - `verify_password(plain: str, hashed: str)`: bool - Verifies password against hash
-  - `create_access_token(data: dict)`: str - Generates JWT access token
-  - `login(username: str, password: str)`: AuthResponse
-    - Queries database for user from user_details view
-    - Checks if account is active (not suspended)
-    - Verifies password using bcrypt
-    - Updates last_login timestamp
-    - Creates JWT token with user data
-    - Creates and returns User entity wrapped in AuthResponse with token
+    Admin->>AdminPage: Submit updated data
+    AdminPage->>UpdateFrontend: updateUser(id,data)
+    UpdateFrontend->>API: PUT /api/users/{id} {data}
+    API->>UpdateBackend: update_user(id,data)
+    UpdateBackend->>DB: Check conflicts (username/email)
+    DB-->>UpdateBackend: conflict check
+    alt no conflict
+      UpdateBackend->>DB: UPDATE users SET ... WHERE id = id
+      DB-->>UpdateBackend: updated row
+      UpdateBackend-->>API: {success, user}
+      API-->>UpdateFrontend: {success, user}
+      UpdateFrontend-->>AdminPage: close modal, refresh list
+    else conflict
+      UpdateBackend-->>API: {success:false,message}
+      API-->>UpdateFrontend: {message}
+      UpdateFrontend-->>AdminPage: show error
+    end
+```
 
-#### 6. **LogoutController (Backend)** (`src/controller/logout_controller.py`)
-- **Purpose**: Backend business logic for user logout (Logout use case)
-- **Methods**:
-  - `logout()`: dict - Returns success message for client-side logout
-  - `logout_with_token_invalidation()`: dict - Returns success message (optional token blacklisting)
-- **Note**: Logout is primarily client-side (removing token from localStorage). Backend controller provides optional endpoint for logging/audit purposes.
+### 6) Suspend / Activate User Account (User Admin)
 
----
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as UserAdminDashboard
+    participant SuspendFrontend as SuspendUserController (Frontend)
+    participant API as FastAPI
+    participant SuspendBackend as SuspendUserController (Backend)
+    participant DB as Supabase
 
-### **ENTITY LAYER (Data Models)**
+    Admin->>AdminPage: Click Suspend/Activate
+    AdminPage->>SuspendFrontend: toggleUserStatus(id)
+    SuspendFrontend->>API: PUT /api/users/{id} {is_active: false/true}
+    API->>SuspendBackend: toggle_status(id)
+    SuspendBackend->>DB: SELECT users WHERE id = id
+    DB-->>SuspendBackend: row
+    SuspendBackend->>DB: UPDATE users SET is_active = !current
+    DB-->>SuspendBackend: updated row
+    SuspendBackend-->>API: {success, user}
+    API-->>SuspendFrontend: {success, user}
+    SuspendFrontend-->>AdminPage: refresh list
+```
 
-#### 7. **User** (`src/entity/user.py`)
-- **Purpose**: Represents a user in the system
-- **Attributes**:
-  - `id`: int - Primary key
-  - `username`: string - Unique username
-  - `full_name`: string - User's full name
-  - `email`: string - Email address
-  - `role_id`: int - Foreign key to roles table
-  - `role_name`: string - Name of role (e.g., "User Admin")
-  - `role_code`: string - Code of role (e.g., "USER_ADMIN")
-  - `dashboard_route`: string - Route to dashboard (e.g., "/dashboard/admin")
-  - `is_active`: bool - Whether account is active or suspended
-  - `last_login`: datetime - Last login timestamp
-- **Methods**:
-  - `from_db(data: dict)`: User - Static factory method to create User from database dict
-  - `to_dict()`: dict - Converts User object to dictionary for JSON serialization
+### 7) Search User Account (User Admin)
 
-#### 8. **AuthResponse** (`src/entity/auth_response.py`)
-- **Purpose**: Wraps authentication result
-- **Attributes**:
-  - `success`: bool - Whether authentication succeeded
-  - `message`: string - Response message (success or error)
-  - `user`: User|None - User entity if successful, None if failed
+```mermaid
+sequenceDiagram
+    actor Admin
+    participant AdminPage as UserAdminDashboard
+    participant SearchFrontend as ViewUserController (Frontend)
+    participant API as FastAPI
+    participant SearchBackend as SearchUserController (Backend)
+    participant DB as Supabase
 
-#### 9. **Role** (`src/entity/role.py`)
-- **Purpose**: Represents a user role
-- **Attributes**:
-  - `id`: int - Primary key
-  - `role_name`: string - Display name (e.g., "User Admin")
-  - `role_code`: string - Code identifier (e.g., "USER_ADMIN")
-  - `description`: string - Role description
-  - `dashboard_route`: string - Route to role's dashboard
-  - `created_at`: datetime - Creation timestamp
-
----
-
-### **DATABASE LAYER**
-
-#### 10. **Supabase Client**
-- **Purpose**: Database connection and query interface
-- **Methods**:
-  - `table(name)`: Selects a table
-  - `select(columns)`: Selects columns
-  - `insert(data)`: Inserts data
-  - `update(data)`: Updates data
-  - `delete()`: Deletes data
-  - `eq(column, value)`: Filters by equality
-  - `execute()`: Executes query
-
-#### 11. **PostgreSQL Database**
-- **Tables**:
-  - `users`: Stores user accounts
-    - Columns: id, username, password, email, full_name, role_id, is_active, last_login, created_at
-  - `roles`: Stores user roles
-    - Columns: id, role_name, role_code, description, dashboard_route, created_at
-- **Views**:
-  - `user_details`: JOIN of users and roles tables
-    - Returns complete user information with role details
+    Admin->>AdminPage: Type search query
+    AdminPage->>SearchFrontend: searchUsers(q)
+    SearchFrontend->>API: GET /api/users?query=q
+    API->>SearchBackend: search_users(q)
+    SearchBackend->>DB: SELECT FROM user_details WHERE username ILIKE q OR email ILIKE q OR full_name ILIKE q
+    DB-->>SearchBackend: rows
+    SearchBackend-->>API: {success, users}
+    API-->>SearchFrontend: {success, users}
+    SearchFrontend-->>AdminPage: display results
+```
 
 ---
 
-## Data Flow Summary
+### Notes & Mappings
 
-### **Login Flow:**
-1. **User Input** → LoginPage (Boundary)
-2. **UI Action** → AuthController.login() (Frontend Control)
-3. **HTTP Request** → FastAPI POST /api/login (API)
-4. **API Call** → LoginController.login() (Backend Control)
-5. **Database Query** → Supabase SELECT from user_details
-6. **Business Logic** → Validate credentials, check active status
-7. **Database Update** → UPDATE last_login timestamp
-8. **Entity Creation** → User.from_db() creates User entity
-9. **JWT Token** → LoginController.create_access_token() generates JWT
-10. **Response** → AuthResponse with User entity and JWT token
-11. **Serialization** → User.to_dict() converts to JSON
-12. **HTTP Response** → Return JSON to frontend
-13. **Storage** → AuthController stores token in localStorage
-14. **Navigation** → Redirect to dashboard
+- Boundary components: `LoginPage`, `UserAdminDashboard` (React/Next.js pages and modals)
+- Frontend controllers: located under `src/app/src/controllers/*`
+- Backend controllers: located under `src/controller/*.py`
+- Entities: `src/entity/*.py` (`User`, `Role`, `AuthResponse`)
+- Database access: Supabase client in backend controllers
+
+This set of diagrams maps directly to the files in the repository. If you'd like, I can:
+
+- write these diagrams into the other diagrams file (`CRUD_USER_ACCOUNTS_DIAGRAMS.md`) or split them into separate files per use case
+- generate PNG/SVG exports of the Mermaid diagrams
+- add/update a README section that references these diagrams and points to the corresponding files in the repo
+
+13. **Navigation** → Redirect to dashboard
 
 ### **Logout Flow:**
 1. **User Click** → UserAdminDashboard (Boundary)
 2. **Confirmation** → Show modal
 3. **Confirm Action** → AuthController.logout() (Frontend Control)
-4. **Remove Data** → Delete token from localStorage
-5. **Optional** → Call LogoutController.logout() for audit logging
-6. **Navigation** → Redirect to login page
+4. **Remove Data** → Delete from localStorage
+5. **Navigation** → Redirect to login page
 
-**Note**: Logout is primarily client-side! No backend API call or database update required because authentication uses JWT tokens (stateless).
+**Note**: Logout is entirely client-side! No backend API call or database update needed because authentication is stateless.
 
 ---
 
@@ -459,30 +375,25 @@ User session is managed entirely client-side via localStorage.
 ## Testing Points
 
 ### **Unit Tests:**
-- LoginController.login() with valid credentials
-- LoginController.login() with invalid credentials
-- LoginController.login() with suspended account
-- LoginController.verify_password() correctly validates passwords
-- LoginController.create_access_token() generates valid JWT
-- LogoutController.logout() returns success message
-- AuthController.logout() (Frontend) clears localStorage
+- AuthController.login() with valid credentials
+- AuthController.login() with invalid credentials
+- AuthController.login() with suspended account
+- AuthController.logout() clears localStorage
 - User.from_db() creates correct entity
 - User.to_dict() serializes correctly
 
 ### **Integration Tests:**
-- POST /api/login with valid user returns 200 with JWT token
+- POST /api/login with valid user returns 200
 - POST /api/login with invalid user returns 200 with success=false
 - POST /api/login updates last_login in database
-- POST /api/logout (optional) returns success status
+- GET /api/verify/{user_id} returns correct status
 
 ### **E2E Tests:**
-- User can login with correct credentials and receive JWT token
+- User can login with correct credentials
 - User redirected to correct dashboard based on role
 - User cannot login with incorrect password
 - Suspended user cannot login
-- JWT token stored in localStorage after successful login
 - User can logout successfully
-- After logout, JWT token removed from localStorage
 - After logout, user redirected to login page
 
 ---

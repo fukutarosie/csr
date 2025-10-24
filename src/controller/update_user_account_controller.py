@@ -126,11 +126,6 @@ class UpdateUserAccountController:
                 update_data['username'] = username
 
             if password is not None and password.strip():
-                if len(password) < 8:
-                    return {
-                        'success': False,
-                        'message': 'Password must be at least 8 characters.'
-                    }
                 update_data['password'] = self.hash_password(password)
 
             if full_name is not None:
